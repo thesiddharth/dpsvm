@@ -35,8 +35,7 @@
 <a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
 
 <p dir="ltr">
-	We are going to implement a parallel Support Vector Machine algorithm for binary classification using the Legion parallel programming system. This would be
-	achieved by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, for distributed heterogeneous
+	We are going to implement a distributed, parallel Support Vector Machine training algorithm for binary classification using the Legion parallel programming system. We plan to do this by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and using Legion to port this to distributed heterogeneous
 	architectures.
 </p>
 
@@ -44,7 +43,7 @@
 <a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
 
 <p dir="ltr">
-	Support Vector Machines (SVMs) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and
+	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and
 	nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual
 	form. Platt originally proposed the SMO technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
 </p>
@@ -56,7 +55,7 @@
 	proposed by Cao et. al. <sup>[1]</sup>, and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.
 </p>
 <p dir="ltr">
-	The parallel calculation of error terms and updates of the Lagrangian multipliers will ideally scale almost linearly with the number of sub processes, and
+	The parallel calculation of error terms and updates of the Lagrangian multipliers will (ideally) scale with the number of sub processes, and
 	allow for the use of parallel reduction with low communication overheads for global constants. We are using Legion to create a portable implementation that
 	leverages distributed environments, while creating a high-performance mapping interface specifically targeted at the latedays cluster.
 </p>
@@ -295,11 +294,11 @@
 </ul>
 
   <h3>
-<a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
+<a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>Platform Choice</h3>
 
 <p dir="ltr">
 	We plan to use Legion and the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along
-	with a high-performance mapping interface specifically targeted at the latedays.
+	with a high-performance mapping interface specifically targeted at latedays.
 </p>
 
   <h3>
