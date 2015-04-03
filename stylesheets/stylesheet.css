@@ -266,7 +266,7 @@ Full-Width Styles
 
 .inner {
   position: relative;
-  max-width: 640px;
+  max-width: 900px;
   padding: 20px 10px;
   margin: 0 auto;
 }
@@ -422,4 +422,30 @@ Small Device Styles
     font-size: 11px;
   }
 
+}
+
+sup {font-size:x-small; vertical-align:super; font-weight: bold;}
+
+ 
+.centeredImage
+{
+	text-align:center;
+	margin-top:0px;
+	margin-bottom:0px;
+	padding:0px;
+}
+
+.my_table
+{
+	width: 100%;
+}
+
+.info_column
+{
+	width:15%;
+}
+
+.setup_column
+{
+	width:30%;
 }
