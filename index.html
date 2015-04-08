@@ -4,7 +4,7 @@
   <head>
     <meta charset='utf-8'>
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <meta name="description" content="Svm-legion : A distributed implementation of Support Vector Machines using Legion">
+    <meta name="description" content="Svm-legion : A distributed implementation of Support Vector Machines using OpenMPI and CUDA">
 
     <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
 
@@ -18,8 +18,8 @@
         <header class="inner">
           <a id="forkme_banner" href="https://github.com/thesiddharth/svm-legion">View on GitHub</a>
 
-          <h1 id="project_title">DPSVM-LEGION</h1>
-          <h2 id="project_tagline">A distributed implementation of Support Vector Machines using Legion</h2>
+          <h1 id="project_title">DPSVM</h1>
+          <h2 id="project_tagline">Distributed Support Vector Machine training using OpenMPI and CUDA</h2>
 
             <section id="downloads">
               <a class="zip_download_link" href="https://github.com/thesiddharth/svm-legion/zipball/master">Download this project as a .zip file</a>
@@ -35,29 +35,22 @@
 <a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
 
 <p dir="ltr">
-	We are going to implement a distributed, parallel Support Vector Machine training algorithm for binary classification using the Legion parallel programming system. We plan to do this by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and using Legion to port this to distributed heterogeneous
-	architectures.
+	We are going to implement a distributed, parallel Support Vector Machine training algorithm for binary classification using the OpenMPI library and the CUDA parallel programming model. We plan to do this by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and distributing the parallelism over GPUs in a cluster.
 </p>
 
 <h3>
 <a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
 
 <p dir="ltr">
-	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and
-	nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual
-	form. Platt originally proposed the SMO technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
+	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. Platt originally proposed the SMO technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
 </p>
 
 <p dir="ltr">
-	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset.
-	Each update step involves the computation of the modified inner products of two training data input vectors (the kernel trick), which is computationally
-	intensive over the set of all training data. We aim to implement a parallel SMO algorithm which distributes the task of training over different nodes as
-	proposed by Cao et. al. <sup>[1]</sup>, and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.
+	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset. Each update step involves the computation of the modified inner products of two training data input vectors (the kernel trick), which is computationally intensive over the set of all training data. We aim to implement a parallel SMO algorithm which distributes the task of training over different nodes as proposed by Cao et. al. <sup>[1]</sup>, and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.
 </p>
 <p dir="ltr">
 	The parallel calculation of error terms and updates of the Lagrangian multipliers will (ideally) scale with the number of sub processes, and
-	allow for the use of parallel reduction with low communication overheads for global constants. We are using Legion to create a portable implementation that
-	leverages distributed environments, while creating a high-performance mapping interface specifically targeted at the latedays cluster.
+	allow for the use of parallel reduction with low communication overheads for global constants. We are using OpenMPI to create a portable implementation that leverages distributed environments, while creating a high-performance mapping interface using CUDA specifically targeted at the latedays cluster.
 </p>
 <br/>
 <p dir="ltr" class="centeredImage">
@@ -70,8 +63,7 @@
 <a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenge</h3>
 
 <p dir="ltr">
-	The aspect of the problem that is most challenging is creating Legion tasks and regions that parallelize the kernel computations in a way that minimizes
-	communication overheads between:
+	The aspect of the problem that is most challenging is creating Legion tasks and regions that parallelize the kernel computations in a way that minimizes communication overheads between:
 </p>
 <ol>
 	<li dir="ltr">
@@ -91,8 +83,7 @@
 </p>
 
 <p dir="ltr">
-	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The
-	following trends were noted:
+	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
 </p>
 <ol>
 	<li dir="ltr">
@@ -103,8 +94,7 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and
-			updates across GPU tasks.
+			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and updates across GPU tasks.
 		</p>
 	</li>
 </ol>
@@ -118,13 +108,11 @@
 <a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Resources</h3>
 
 <p dir="ltr">
-	We will be using the latedays cluster for running the system, using Legion to port the implementation across different nodes. We hope to leverage
-	parallelism primarily across the GPU devices in the cluster.
+	We will be using the latedays cluster for running the system, using OpenMPI as the Message Passing Interface to distribute the data across different nodes. We hope to leverage parallelism primarily across the GPU devices in the cluster.
 </p>
 
 <p dir="ltr">
-	We are building upon the pseudo code provided for the parallel SMO algorithm, which uses OpenMPI to distribute computation across nodes by Cao et. al.<sup>[1]</sup>
-	And we aim to start with the basic division of work across GPUs as described by Herrero-Lopez et. al.<sup>[2]</sup> in their implementation.
+	We are building upon the pseudo code provided for the parallel SMO algorithm, which uses OpenMPI to distribute computation across nodes by Cao et. al.<sup>[1]</sup> And we aim to start with the basic division of work across GPUs as described by Herrero-Lopez et. al.<sup>[2]</sup> in their implementation.
 </p>    
 
   <h3>
@@ -137,7 +125,7 @@
 <ul>
 	<li dir="ltr">
 		<p dir="ltr">
-			A Legion-based, distributed, parallel SVM implementation.
+			An OpenMPI and CUDA based, distributed, parallel SVM implementation.
 		</p>
 	</li>
 	<li dir="ltr">
@@ -297,8 +285,7 @@
 <a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>Platform Choice</h3>
 
 <p dir="ltr">
-	We plan to use Legion and the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along
-	with a high-performance mapping interface specifically targeted at latedays.
+	We plan to use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays.
 </p>
 
   <h3>
@@ -331,8 +318,7 @@
 				</td>
 				<td>
 					<p dir="ltr">
-						Understanding Legion paradigms and setting up GASNet on latedays. Legion "Hello, World!" on latedays. Review existing literature on
-						Parallel SVMs.
+						Set up the development environment on latedays, and finish writing the boilerplate code. Review existing literature on Parallel SVMs.
 					</p>
 				</td>
 			</tr>
@@ -392,16 +378,13 @@
 <a id="bibliography" class="anchor" href="#bibliography" aria-hidden="true"><span class="octicon octicon-link"></span></a>Bibliography</h3>
 
 <p dir="ltr">
-	<sup>[1]</sup> Cao, Li Juan, et al. "Parallel sequential minimal optimization for the training of support vector machines." Neural Networks, IEEE Transactions on 17.4
-	(2006): 1039-1049.
+	<sup>[1]</sup> Cao, Li Juan, et al. "Parallel sequential minimal optimization for the training of support vector machines." Neural Networks, IEEE Transactions on 17.4 (2006): 1039-1049.
 </p>
 <p dir="ltr">
-	<sup>[2]</sup> Herrero-Lopez, Sergio, John R. Williams, and Abel Sanchez. "Parallel multiclass classification using SVMs on GPUs." Proceedings of the 3rd Workshop on
-	General-Purpose Computation on Graphics Processing Units. ACM, 2010.
+	<sup>[2]</sup> Herrero-Lopez, Sergio, John R. Williams, and Abel Sanchez. "Parallel multiclass classification using SVMs on GPUs." Proceedings of the 3rd Workshop on General-Purpose Computation on Graphics Processing Units. ACM, 2010.
 </p>
 <p dir="ltr">
-	<sup>[3]</sup> Li, Qi, et al. "Parallel multitask cross validation for Support Vector Machine using GPU." Journal of Parallel and Distributed Computing 73.3 (2013):
-	293-302.
+	<sup>[3]</sup> Li, Qi, et al. "Parallel multitask cross validation for Support Vector Machine using GPU." Journal of Parallel and Distributed Computing 73.3 (2013): 293-302.
 </p>
 <p dir="ltr">
 	<sup>[4]</sup> http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/distributed-liblinear/
