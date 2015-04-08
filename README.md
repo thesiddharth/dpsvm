@@ -1,5 +1,5 @@
 ---
-#DPSVM-LEGION#
+#DPSVM#
 ---
 
-###A Legion-based, distributed, parallel SVM implementation###
+###An OpenMPI and CUDA based, distributed, parallel SVM implementation###
