@@ -50,7 +50,7 @@
 </p>
 <p dir="ltr">
 	The parallel calculation of error terms and updates of the Lagrangian multipliers will (ideally) scale with the number of sub processes, and
-	allow for the use of parallel reduction with low communication overheads for global constants. We are using OpenMPI to create a portable implementation that leverages distributed environments, while creating a high-performance mapping interface using CUDA specifically targeted at the latedays cluster.
+	allow for the use of parallel reduction with low communication overheads for global constants. We are using OpenMPI and CUDA to create a portable, high-performance implementation that leverages distributed environments.
 </p>
 <br/>
 <p dir="ltr" class="centeredImage">
@@ -63,7 +63,7 @@
 <a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenge</h3>
 
 <p dir="ltr">
-	The aspect of the problem that is most challenging is creating Legion tasks and regions that parallelize the kernel computations in a way that minimizes communication overheads between:
+	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that minimizes communication overheads between:
 </p>
 <ol>
 	<li dir="ltr">
@@ -78,8 +78,7 @@
 	</li>
 </ol>
 <p dir="ltr">
-	This is exacerbated by the fact that our team is completely new to the Legion language, and has only a basic understanding of SVM theory and the SMO
-	algorithm.
+	This is exacerbated by the fact that our team has only a basic understanding of SVM theory and the SMO algorithm, and will need to do a thorough literature review to get a firm grasp on the concepts required.
 </p>
 
 <p dir="ltr">
@@ -125,7 +124,7 @@
 <ul>
 	<li dir="ltr">
 		<p dir="ltr">
-			An OpenMPI and CUDA based, distributed, parallel SVM implementation.
+			An OpenMPI and CUDA based, distributed, parallel SVM training implementation.
 		</p>
 	</li>
 	<li dir="ltr">
@@ -271,12 +270,12 @@
 <ul>
 	<li dir="ltr">
 		<p dir="ltr">
-			Profiling against Spark LIBLINEAR or MPI LIBLINEAR <sup>[4]</sup>
+			Profiling against Spark LIBLINEAR or MPI LIBLINEAR, <sup>[4]</sup>
 		</p>
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Profiling for multi-class datasets.
+			Extend the implementation for one-vs-all multi-class classification.
 		</p>
 	</li>
 </ul>
@@ -330,7 +329,7 @@
 				</td>
 				<td>
 					<p dir="ltr">
-						Get a correct, unoptimized implementation up and running.
+						Get a correct, unoptimized implementation of the training algorithm up and running.
 					</p>
 				</td>
 			</tr>
@@ -342,7 +341,7 @@
 				</td>
 				<td>
 					<p dir="ltr">
-						Optimize implementation for performance.
+						Optimize training performance, and implement classifier.
 					</p>
 				</td>
 			</tr>
