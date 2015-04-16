@@ -79,7 +79,7 @@ run_sample: mpi_sample
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) -np 6 mpi_sample -s 10000000 -d norm -p 5
 
 run_seq: seq
-	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./seq --num-att 785 --num-ex 10000 -c 1 -g 0.01 -e 0.00001 -f ./data/train.csv
+	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./seq --num-att 785 --num-ex 60000 -c 1 -g 0.1 -e 0.01 -f ./data/train.csv
 
 mpi_sample: dirs $(SAMPLE_OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SAMPLE_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
