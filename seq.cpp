@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <cblas.h>
+#include <math.h>
 
 using namespace std;
 
@@ -15,6 +17,10 @@ void initialize_f_array(float* f, int* y, int num_train_data);
 void set_I_arrays(float* alpha, int *y, float c, int num_train_data, vector<int> I[5]);
 int get_I_up(float* f, vector<int> I[5]);
 int get_I_low(float* f, vector<int> I[5]);
+void get_x(float* x, float* x_copy, int idx, int num_attributes);
+float rbf_kernel(float* x1,float* x2,float gamma,int num_attributes);
+float clip_value(float num, float low, float high);
+void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes);
 
 int main(int argc, char *argv[]) {
 	//TODO: command line arguments here
@@ -47,7 +53,82 @@ int main(int argc, char *argv[]) {
 	int I_low = get_I_low(f,I);
 	float b_low = f[I_low];
 
+	float* x1 = new float[num_attributes];
+	float* x2 = new float[num_attributes];
+
+	get_x(x, x1, I_low, num_attributes);
+	get_x(x, x2, I_up, num_attributes);
+
+	int y1 = y[I_low];
+	int y2 = y[I_up];
+
+	int s = y1*y2;
+	float eta = (2*rbf_kernel(x1,x2,gamma,num_attributes)) - rbf_kernel(x1,x1,gamma,num_attributes) - rbf_kernel(x2,x2,gamma,num_attributes);
+
+	float alpha1_old = alpha[I_low];
+	float alpha2_old = alpha[I_up];
+
+	//update alpha1 and alpha2
+	float alpha2_new = alpha2_old - (y2*(b_low - b_up)/eta);
+	float alpha1_new = alpha1_old + (s*(alpha2_old - alpha2_new));
+
+	//clip alpha values between 0 and C
+	alpha1_new = clip_value(alpha1_new, 0, C);
+	alpha2_new = clip_value(alpha2_new, 0, C);
+
+	//store new alpha_1 and alpha_2 values
+	alpha[I_low] = alpha1_new;
+	alpha[I_up] = alpha2_new;
+
+	update_f(f, x, x1, x2, y1, y2, (alpha1_new - alpha1_old), (alpha2_new - alpha2_old), num_train_data, num_attributes);
+
 	return 0;
+}
+
+void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes) {
+	for(int i=0; i<num_train_data; i++) {
+		float* xi = new float[num_attributes];
+		get_x(x, xi, i, num_attributes);
+
+		float delta = (d_alpha1*y1*rbf_kernel(x1,xi)) + (d_alpha2*y2*rbf_kernel(x2,xi));
+
+		f[i] += delta;
+	}
+}
+
+float clip_value(float num, float low, float high) {
+	if(num < low) {
+		return low;
+	} else if(num > high) {
+		return high;
+	}
+
+	return num;
+}
+
+float rbf_kernel(float* x1,float* x2,float gamma,int num_attributes) {
+	float* x1_copy = new float[num_attributes];
+	float* x2_copy = new float[num_attributes];
+
+	//deep copy
+	get_x(x1, x1_copy, 0, num_attributes);
+	get_x(x2, x2_copy, 0, num_attributes);
+
+	cblas_saxpy(num_attributes, -1, x2_copy, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
+
+	float norm = cblas_snrm2(num_attributes, x1_copy, 1);
+
+	float result = (float)exp((double)gamma*norm*norm);
+
+	return result;
+}
+
+void get_x(float* x, float* x_copy, int idx, int num_attributes) {
+	int ctr = 0;
+
+	for(int i=(idx*num_attributes); i<num_attributes; i++) {
+		x_copy[ctr++] = x[i];
+	}
 }
 
 void populate_data(char* input_file_name, float* x, int* y, int num_attributes, int num_train_data)
