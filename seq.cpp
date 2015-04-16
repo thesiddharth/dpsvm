@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <cblas.h>
 #include <stdlib.h>
-#include <string>
 #include <vector>
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <string>
+#include <string.h>
 #include <cblas.h>
 #include <math.h>
+#include <getopt.h>
+#include <string>
 
 using namespace std;
 
@@ -18,10 +19,10 @@ void set_I_arrays(float* alpha, int *y, float c, int num_train_data, vector<int>
 int get_I_up(float* f, vector<int> I[5]);
 int get_I_low(float* f, vector<int> I[5]);
 void get_x(float* x, float* x_copy, int idx, int num_attributes);
-float rbf_kernel(float* x1,float* x2,float gamma,int num_attributes);
+float rbf_kernel(float* x1,float* x2);
 float clip_value(float num, float low, float high);
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes);
-float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes);
+float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes);
 
 typedef struct {
 
@@ -188,7 +189,7 @@ int main(int argc, char *argv[]) {
 		int y2 = y[I_up];
 
 		int s = y1*y2;
-		float eta = (2*rbf_kernel(x1,x2,gamma,num_attributes)) - rbf_kernel(x1,x1,gamma,num_attributes) - rbf_kernel(x2,x2,gamma,num_attributes);
+		float eta = (2*rbf_kernel(x1,x2)) - rbf_kernel(x1,x1) - rbf_kernel(x2,x2);
 
 		float alpha1_old = alpha[I_low];
 		float alpha2_old = alpha[I_up];
@@ -217,13 +218,16 @@ int main(int argc, char *argv[]) {
 
 		//obtain the new duality gap
 		duality_gap = get_duality_gap(alpha, y, f, C, b, num_train_data, num_attributes);
-	} while(duality_gap > (tolerance*dual))
+	} while(duality_gap > (tolerance*dual));
 
 	return 0;
 }
 
-float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes) {
+float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes) {
 	float duality_gap = 0;
+	int yi;
+	float fi;
+	float alpha_i;
 
 	for(int i=0; i<num_train_data; i++) {
 		float epsilon;
@@ -266,19 +270,19 @@ float clip_value(float num, float low, float high) {
 	return num;
 }
 
-float rbf_kernel(float* x1,float* x2,float gamma,int num_attributes) {
-	float* x1_copy = new float[num_attributes];
-	float* x2_copy = new float[num_attributes];
+float rbf_kernel(float* x1,float* x2) {
+	float* x1_copy = new float[state.num_attributes];
+	float* x2_copy = new float[state.num_attributes];
 
 	//deep copy
-	get_x(x1, x1_copy, 0, num_attributes);
-	get_x(x2, x2_copy, 0, num_attributes);
+	get_x(x1, x1_copy, 0, state.num_attributes);
+	get_x(x2, x2_copy, 0, state.num_attributes);
 
-	cblas_saxpy(num_attributes, -1, x2_copy, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
+	cblas_saxpy(state.num_attributes, -1, x2_copy, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
 
-	float norm = cblas_snrm2(num_attributes, x1_copy, 1);
+	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
 
-	float result = (float)exp((double)gamma*norm*norm);
+	float result = (float)exp((double)state.gamma*norm*norm);
 
 	return result;
 }
