@@ -4,9 +4,9 @@ __author__ = 'Sid'
 
 if __name__ == "__main__":
 
-    filename = sys.argv[1]
+    filename = str(sys.argv[1])
     fd = open(filename, "r")
-    ft = open(str(filename)+"_u", "w")
+    ft = open(filename[0:len(filename)-4]+"_conv.csv", "w")
 
     print "Processing ..."
 
