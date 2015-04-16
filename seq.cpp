@@ -144,70 +144,103 @@ int main(int argc, char *argv[]) {
 	float gamma = state.gamma;
 	char input_file_name[30];
 	strcpy(input_file_name, state.input_file_name);
+	float tolerance = state.epsilon;
 
 	//input data attributes and labels
 	float* x = new float[num_attributes*num_train_data];
 	int* y = new int[num_train_data];
 
+	//read data from input file
 	populate_data(input_file_name, x, y, num_attributes, num_train_data);
 
 	//Initialize starting values
 	float dual = 0;
+	float duality_gap = 0;
 	float* alpha = new float[num_train_data]();
 	float* f = new float[num_train_data];
 
 	initialize_f_array(f, y, num_train_data);
 
+	//I sets
 	vector<int> I[5];
 
-	set_I_arrays(alpha, y, C, num_train_data, I);
+	//b (intercept)
+	float b;
 
-	int I_up = get_I_up(f,I);
-	float b_up = f[I_up];
+	do {
+		//update the I sets
+		set_I_arrays(alpha, y, C, num_train_data, I);
 
-	int I_low = get_I_low(f,I);
-	float b_low = f[I_low];
+		//get alpha1 and alpha2
+		int I_up = get_I_up(f,I);
+		float b_up = f[I_up];
 
-	float* x1 = new float[num_attributes];
-	float* x2 = new float[num_attributes];
+		int I_low = get_I_low(f,I);
+		float b_low = f[I_low];
 
-	get_x(x, x1, I_low, num_attributes);
-	get_x(x, x2, I_up, num_attributes);
+		float* x1 = new float[num_attributes];
+		float* x2 = new float[num_attributes];
 
-	int y1 = y[I_low];
-	int y2 = y[I_up];
+		get_x(x, x1, I_low, num_attributes);
+		get_x(x, x2, I_up, num_attributes);
 
-	int s = y1*y2;
-	float eta = (2*rbf_kernel(x1,x2,gamma,num_attributes)) - rbf_kernel(x1,x1,gamma,num_attributes) - rbf_kernel(x2,x2,gamma,num_attributes);
+		int y1 = y[I_low];
+		int y2 = y[I_up];
 
-	float alpha1_old = alpha[I_low];
-	float alpha2_old = alpha[I_up];
+		int s = y1*y2;
+		float eta = (2*rbf_kernel(x1,x2,gamma,num_attributes)) - rbf_kernel(x1,x1,gamma,num_attributes) - rbf_kernel(x2,x2,gamma,num_attributes);
 
-	//update alpha1 and alpha2
-	float alpha2_new = alpha2_old - (y2*(b_low - b_up)/eta);
-	float alpha1_new = alpha1_old + (s*(alpha2_old - alpha2_new));
+		float alpha1_old = alpha[I_low];
+		float alpha2_old = alpha[I_up];
 
-	//clip alpha values between 0 and C
-	alpha1_new = clip_value(alpha1_new, 0, C);
-	alpha2_new = clip_value(alpha2_new, 0, C);
+		//update alpha1 and alpha2
+		float alpha2_new = alpha2_old - (y2*(b_low - b_up)/eta);
+		float alpha1_new = alpha1_old + (s*(alpha2_old - alpha2_new));
 
-	//store new alpha_1 and alpha_2 values
-	alpha[I_low] = alpha1_new;
-	alpha[I_up] = alpha2_new;
+		//clip alpha values between 0 and C
+		alpha1_new = clip_value(alpha1_new, 0, C);
+		alpha2_new = clip_value(alpha2_new, 0, C);
 
-	update_f(f, x, x1, x2, y1, y2, (alpha1_new - alpha1_old), (alpha2_new - alpha2_old), num_train_data, num_attributes);
+		//store new alpha_1 and alpha_2 values
+		alpha[I_low] = alpha1_new;
+		alpha[I_up] = alpha2_new;
 
-	float dual_new = dual - (((alpha1_new - alpha1_old)/y1)*(b_low - b_up)) + ((eta/2)*((alpha1_new - alpha1_old)/y1) * ((alpha1_new - alpha1_old)/y1));
+		//update f values
+		update_f(f, x, x1, x2, y1, y2, (alpha1_new - alpha1_old), (alpha2_new - alpha2_old), num_train_data, num_attributes);
 
-	float b = (b_up + b_low) / 2;
+		//obtain new dual
+		float dual_old = dual;
+		dual = dual_old - (((alpha1_new - alpha1_old)/y1)*(b_low - b_up)) + ((eta/2)*((alpha1_new - alpha1_old)/y1) * ((alpha1_new - alpha1_old)/y1));
 
-	float duality_gap = get_duality_gap(alpha, y, f, c, b, num_train_data, num_attributes);
+		//get b
+		b = (b_up + b_low) / 2;
+
+		//obtain the new duality gap
+		duality_gap = get_duality_gap(alpha, y, f, C, b, num_train_data, num_attributes);
+	} while(duality_gap > (tolerance*dual))
 
 	return 0;
 }
 
 float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes) {
 	float duality_gap = 0;
+
+	for(int i=0; i<num_train_data; i++) {
+		float epsilon;
+		yi = y[i];
+		fi = f[i];
+		alpha_i = alpha[i];
+
+		if(yi == 1) {
+			float prod = (0 > (b-fi))?0:(b-fi);
+			epsilon = c*prod;
+		} else {
+			float prod = (0 > (fi-b))?0:(fi-b);
+			epsilon = c*prod;
+		}
+
+		duality_gap += (alpha_i*yi*fi) + epsilon;
+	}
 
 	return duality_gap;
 }
