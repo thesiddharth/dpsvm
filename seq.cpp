@@ -24,6 +24,7 @@ float clip_value(float num, float low, float high);
 void update_f(float* f, float* x, float* x_low, float* x_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new);
 float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes);
 void print_x(float* x);
+float get_train_accuracy(float* x, int* y, float* alpha, float b);
 
 typedef struct {
 
@@ -157,8 +158,6 @@ int main(int argc, char *argv[]) {
 	cout << "Populated Data" << "\n";
 
 	//Initialize starting values
-	float dual = 0;
-	float duality_gap = 0;
 	float* alpha = new float[num_train_data]();
 	float* f = new float[num_train_data];
 
@@ -168,10 +167,16 @@ int main(int argc, char *argv[]) {
 	vector<int> I[5];
 
 	//b (intercept)
-	float b;
 	float b_low, b_hi;
 
+	int num_iter = 0;
+
+	float eta, prev_eta;
+	eta = 0;
+
 	do {
+		prev_eta = eta;
+
 		//update the I sets
 		set_I_arrays(alpha, y, C, num_train_data, I);
 	
@@ -203,7 +208,7 @@ int main(int argc, char *argv[]) {
 		int y_low = y[I_low];
 		int y_hi = y[I_hi];
 
-		float eta = (2*rbf_kernel(x_low,x_hi)); //- rbf_kernel(x_hi,x_hi) + rbf_kernel(x_low,x_low) - ;
+		eta = (2*rbf_kernel(x_low,x_hi)); //- rbf_kernel(x_hi,x_hi) + rbf_kernel(x_low,x_low) - ;
 		
 		cout << "------------------------\n";
 		cout << "Eta: " << eta << "\n";
@@ -223,8 +228,8 @@ int main(int argc, char *argv[]) {
 		cout << "------------------------\n";
 
 		//clip alpha values between 0 and C
-		alpha_low_new = clip_value(alpha_low_new, 0, C);
-		alpha_hi_new = clip_value(alpha_hi_new, 0, C);
+		alpha_low_new = clip_value(alpha_low_new, 0.0, C);
+		alpha_hi_new = clip_value(alpha_hi_new, 0.0, C);
 
 		cout << "------------------------\n";
 		cout << "Post clip aplha low: " << alpha_low_new << "\n";
@@ -266,9 +271,56 @@ int main(int argc, char *argv[]) {
 		cout << "b_hi + 2* tol: " << b_hi+(2*tolerance) << "\n";
 		cout << "------------------------\n";
 
-	} while(b_low > (b_hi +(2*tolerance)));
+		num_iter++;
+
+		cout << "Current iteration number: " << num_iter << "\n";
+
+	} while((b_low > (b_hi +(2*tolerance))) && (prev_eta != eta));
+
+	cout << "Converged at iteration number: " << num_iter << "\n";
+
+	float b = (b_low + b_hi)/2;
+
+	float train_accuracy = get_train_accuracy(x, y, alpha, b);
+
+	cout << "Training accuracy: " << train_accuracy << "\n";
 
 	return 0;
+}
+
+float get_train_accuracy(float* x, int* y, float* alpha, float b) {
+	int num_correct = 0;
+
+	for(int i=0; i<state.num_train_data; i++) {
+		float dual = 0;
+		
+		float* x_i = new float[state.num_attributes];
+		get_x(x, x_i, i, state.num_attributes);
+
+		for(int j=0; j<state.num_train_data; j++) {
+			float* x_j = new float[state.num_attributes];
+			get_x(x, x_j, j, state.num_attributes);
+
+			dual += y[j]*alpha[j]*rbf_kernel(x_j, x_i);
+
+			delete [] x_j;
+		}
+
+		dual += b;
+
+		int result = 1;
+		if(dual < 0) {
+			result = -1;
+		}
+
+		if(result == y[i]) {
+			num_correct++;
+		}
+
+		delete [] x_i;
+	}
+
+	return ((float)num_correct/(state.num_train_data));
 }
 
 float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes) {
