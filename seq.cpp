@@ -298,12 +298,14 @@ float get_train_accuracy(float* x, int* y, float* alpha, float b) {
 		get_x(x, x_i, i, state.num_attributes);
 
 		for(int j=0; j<state.num_train_data; j++) {
-			float* x_j = new float[state.num_attributes];
-			get_x(x, x_j, j, state.num_attributes);
+			if(alpha[j] != 0) {
+				float* x_j = new float[state.num_attributes];
+				get_x(x, x_j, j, state.num_attributes);
 
-			dual += y[j]*alpha[j]*rbf_kernel(x_j, x_i);
+				dual += y[j]*alpha[j]*rbf_kernel(x_j, x_i);
 
-			delete [] x_j;
+				delete [] x_j;
+			}
 		}
 
 		dual += b;
