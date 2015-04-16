@@ -23,13 +23,127 @@ float clip_value(float num, float low, float high);
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes);
 float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes);
 
+typedef struct {
+
+	int num_attributes;
+	int num_train_data;
+	float c;
+	float gamma;
+	float epsilon;
+	char input_file_name[30];
+
+} state_model;
+
+static state_model state;
+
+static void usage_exit() {
+    cerr <<
+"   Command Line:\n"
+"\n"
+"   -a/--num-att        :  [REQUIRED] The number of attributes\n"
+"									  /features\n"
+"   -x/--num-ex       	:  [REQUIRED] The number of training \n"
+"									  examples\n"
+"   -f/--file-path      :  [REQUIRED] Path to the training file\n"
+"   -c/--cost        	:  Parameter c of the SVM (default 1)\n"
+"   -g/--gamma       	:  Parameter gamma of the radial basis\n"
+"						   function: exp(-gamma*|u-v|^2)\n"
+"						   (default: 1/num-att)"
+"   -e/--epsilon        :  Tolerance of termination criterion\n"
+"						   (default 0.001)"
+"\n";
+    
+	exit(-1);
+}
+
+static struct option longOptionsG[] =
+{
+    { "num-att",        required_argument,          0,  'a' },
+    { "num-ex",         required_argument,          0,  'x' },
+    { "cost",           required_argument,          0,  'c' },
+    { "gamma",          required_argument,          0,  'g' },
+    { "file-path",      required_argument,          0,  'f' },
+    { "epsilon",       	required_argument,          0,  'e' },
+    { 0,                0,                          0,   0  }
+};
+
+static void parse_arguments(int argc, char* argv[]) {
+
+    // Default Values
+    state.epsilon = 0.001;
+    state.c = 1;
+	state.num_attributes = -1;
+	state.num_train_data = -1;
+	state.gamma = -1;
+	strcpy(state.input_file_name, "");
+
+    // Parse args
+    while (1) {
+        int idx = 0;
+        int c = getopt_long(argc, argv, "a:x:c:g:f:e:", longOptionsG, &idx);
+
+        if (c == -1) {
+            // End of options
+            break;
+        }
+
+        switch (c) {
+        case 'a':
+            state.num_attributes = atoi(optarg);
+            break;
+        case 'x':
+            state.num_train_data = atoi(optarg);
+            break;
+        case 'c':
+            state.c = atof(optarg);
+            break;
+        case 'g':
+            state.gamma = atof(optarg);
+            break;
+       case 'f':
+            strcpy(state.input_file_name, optarg);
+            break;
+       case 'e':
+            state.epsilon = atof(optarg);
+            break;
+        default:
+            cerr << "\nERROR: Unknown option: -" << c << "\n";
+            // Usage exit
+            usage_exit();
+        }
+    }
+
+	if(strcmp(state.input_file_name,"")==0) {
+
+		cerr << "Enter a valid file name\n";
+		usage_exit();
+	}
+
+	if(state.num_attributes <= 0 || state.num_train_data <= 0) {
+
+		cerr << "Missing a required parameter, or invalid parameter\n";
+		usage_exit();
+
+	}
+
+	if(state.gamma < 0) {
+
+		state.gamma = 1 / state.num_train_data;
+	}
+
+}
+
 int main(int argc, char *argv[]) {
+
+	parse_arguments(argc, argv);
+	
 	//TODO: command line arguments here
-	int num_attributes = 120;
-	int num_train_data = 10000;
-	float C = 1;
-	float gamma = 0.1;
-	char input_file_name[30] = "train.csv";
+	int num_attributes = state.num_attributes;
+	int num_train_data = state.num_train_data;
+	float C = state.c;
+	float gamma = state.gamma;
+	char input_file_name[30];
+	strcpy(input_file_name, state.input_file_name);
 
 	//input data attributes and labels
 	float* x = new float[num_attributes*num_train_data];
