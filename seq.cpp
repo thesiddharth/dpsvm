@@ -5,11 +5,12 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 using namespace std;
 
-void populate_data(string input_file_name, float* x, int* y, int num_attributes, int num_train_data);
+void populate_data(char* input_file_name, float* x, int* y, int num_attributes, int num_train_data);
 void initialize_f_array(float* f, int* y, int num_train_data);
 void set_I_arrays(float* alpha, int *y, float c, int num_train_data, vector<int> I[5]);
 int get_I_up(float* f, vector<int> I[5]);
@@ -69,7 +70,7 @@ void populate_data(char* input_file_name, float* x, int* y, int num_attributes, 
         stringstream lineStream(line);
         string cell;
 
-        getline(lineStream,cell,",");
+        getline(lineStream,cell,',');
 
         y[curr_example_num] = stoi(cell);
 

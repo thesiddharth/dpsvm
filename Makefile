@@ -60,6 +60,7 @@ NVCC=nvcc
 
 OBJS=$(OBJDIR)/main.o $(OBJDIR)/svmTrain.o 
 SAMPLE_OBJS=$(OBJDIR)/mpi_sample.o
+SEQ_OBJS=$(OBJDIR)/seq.o
 
 .PHONY: dirs clean
 
@@ -69,7 +70,7 @@ dirs:
 		mkdir -p $(OBJDIR)/
 
 clean:
-		rm -rf $(OBJDIR) *~ $(EXECUTABLE) $(LOGS)
+		rm -rf $(OBJDIR) *~ $(EXECUTABLE) mpi_sample seq  $(LOGS)
 
 run: $(EXECUTABLE)
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) --hostfile host_file -np 6 $(EXECUTABLE) -s 10000000 -d norm -p 5
@@ -77,8 +78,14 @@ run: $(EXECUTABLE)
 run_sample: mpi_sample
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) -np 6 mpi_sample -s 10000000 -d norm -p 5
 
+run_seq: seq
+	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./seq
+
 mpi_sample: dirs $(SAMPLE_OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SAMPLE_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
+
+seq: dirs $(SEQ_OBJS)
+		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SEQ_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
 
 $(EXECUTABLE): dirs $(OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
