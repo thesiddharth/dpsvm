@@ -23,6 +23,7 @@ float rbf_kernel(float* x1,float* x2);
 float clip_value(float num, float low, float high);
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes);
 float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes);
+void print_x(float* x);
 
 typedef struct {
 
@@ -142,7 +143,6 @@ int main(int argc, char *argv[]) {
 	int num_attributes = state.num_attributes;
 	int num_train_data = state.num_train_data;
 	float C = state.c;
-	float gamma = state.gamma;
 	char input_file_name[30];
 	strcpy(input_file_name, state.input_file_name);
 	float tolerance = state.epsilon;
@@ -153,6 +153,8 @@ int main(int argc, char *argv[]) {
 
 	//read data from input file
 	populate_data(input_file_name, x, y, num_attributes, num_train_data);
+
+	cout << "Populated Data" << "\n";
 
 	//Initialize starting values
 	float dual = 0;
@@ -171,6 +173,13 @@ int main(int argc, char *argv[]) {
 	do {
 		//update the I sets
 		set_I_arrays(alpha, y, C, num_train_data, I);
+	
+		cout << I[0].size() << "\n";
+		cout << I[1].size() << "\n";
+		cout << I[2].size() << "\n";
+		cout << I[3].size() << "\n";
+		cout << I[4].size() << "\n";
+
 
 		//get alpha1 and alpha2
 		int I_up = get_I_up(f,I);
@@ -178,6 +187,11 @@ int main(int argc, char *argv[]) {
 
 		int I_low = get_I_low(f,I);
 		float b_low = f[I_low];
+
+		cout << "------------------------\n";
+		cout << "I_up: " << I_up << "\n";
+		cout << "I_low: " << I_low << "\n";
+		cout << "------------------------\n";
 
 		float* x1 = new float[num_attributes];
 		float* x2 = new float[num_attributes];
@@ -190,6 +204,10 @@ int main(int argc, char *argv[]) {
 
 		int s = y1*y2;
 		float eta = (2*rbf_kernel(x1,x2)) - rbf_kernel(x1,x1) - rbf_kernel(x2,x2);
+		
+		cout << "------------------------\n";
+		cout << "Eta: " << eta << "\n";
+		cout << "------------------------\n";
 
 		float alpha1_old = alpha[I_low];
 		float alpha2_old = alpha[I_up];
@@ -198,10 +216,20 @@ int main(int argc, char *argv[]) {
 		float alpha2_new = alpha2_old - (y2*(b_low - b_up)/eta);
 		float alpha1_new = alpha1_old + (s*(alpha2_old - alpha2_new));
 
+		cout << "------------------------\n";
+		cout << "Pre clip aplha 1: " << alpha1_new << "\n";
+		cout << "Pre clip aplha 2: " << alpha2_new << "\n";	
+		cout << "------------------------\n";
+
 		//clip alpha values between 0 and C
 		alpha1_new = clip_value(alpha1_new, 0, C);
 		alpha2_new = clip_value(alpha2_new, 0, C);
 
+		cout << "------------------------\n";
+		cout << "Post clip aplha 1: " << alpha1_new << "\n";
+		cout << "Post clip aplha 2: " << alpha2_new << "\n";	
+		cout << "------------------------\n";
+		
 		//store new alpha_1 and alpha_2 values
 		alpha[I_low] = alpha1_new;
 		alpha[I_up] = alpha2_new;
@@ -213,11 +241,25 @@ int main(int argc, char *argv[]) {
 		float dual_old = dual;
 		dual = dual_old - (((alpha1_new - alpha1_old)/y1)*(b_low - b_up)) + ((eta/2)*((alpha1_new - alpha1_old)/y1) * ((alpha1_new - alpha1_old)/y1));
 
+		cout << "------------------------\n";
+		cout << "Dual: " << dual << "\n";	
+		cout << "------------------------\n";
+
 		//get b
 		b = (b_up + b_low) / 2;
 
+		cout << "------------------------\n";
+		cout << "b: " << b << "\n";
+		cout << "------------------------\n";
+
 		//obtain the new duality gap
 		duality_gap = get_duality_gap(alpha, y, f, C, b, num_train_data, num_attributes);
+
+		cout << "Duality gap: " << duality_gap << "\n";
+
+		delete [] x1;
+		delete [] x2;
+
 	} while(duality_gap > (tolerance*dual));
 
 	return 0;
@@ -250,14 +292,18 @@ float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_
 }
 
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes) {
+	
+	float* xi = new float[num_attributes];
+	
 	for(int i=0; i<num_train_data; i++) {
-		float* xi = new float[num_attributes];
 		get_x(x, xi, i, num_attributes);
 
 		float delta = (d_alpha1*y1*rbf_kernel(x1,xi)) + (d_alpha2*y2*rbf_kernel(x2,xi));
 
 		f[i] += delta;
 	}
+
+	delete [] xi;
 }
 
 float clip_value(float num, float low, float high) {
@@ -278,11 +324,23 @@ float rbf_kernel(float* x1,float* x2) {
 	get_x(x1, x1_copy, 0, state.num_attributes);
 	get_x(x2, x2_copy, 0, state.num_attributes);
 
+	//TODO: See if BLAS has nicer functions
 	cblas_saxpy(state.num_attributes, -1, x2_copy, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
 
 	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
 
 	float result = (float)exp((double)state.gamma*norm*norm);
+
+	//float result2 = (float)exp(-1*(double)state.gamma*norm*norm);
+
+	//cout << "Norm: " << norm << "\n";
+	//cout << "Res1: " << result <<"\n";
+	//cout << "Res2: " << result2 << "\n";
+
+	//exit(0);
+
+	delete [] x1_copy;
+	delete [] x2_copy;
 
 	return result;
 }
@@ -290,7 +348,10 @@ float rbf_kernel(float* x1,float* x2) {
 void get_x(float* x, float* x_copy, int idx, int num_attributes) {
 	int ctr = 0;
 
-	for(int i=(idx*num_attributes); i<num_attributes; i++) {
+	int start_index = (idx*num_attributes);
+	int end_index = start_index+num_attributes;
+
+	for(int i = start_index; i < end_index; i++) {
 		x_copy[ctr++] = x[i];
 	}
 }
@@ -416,4 +477,15 @@ int get_I_low(float* f, vector<int> I[5]) {
 	}
 	
 	return I_low;
+}
+
+//////////////////////////////// HELPER FUNCTIONS /////////////////////////////////
+
+void print_x(float* x) {
+
+	for(int i = 0; i < state.num_attributes; i++) {
+		cout << x[i] << ",";
+	}
+
+	cout << "\n";
 }
