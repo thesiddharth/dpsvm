@@ -21,6 +21,7 @@ void get_x(float* x, float* x_copy, int idx, int num_attributes);
 float rbf_kernel(float* x1,float* x2,float gamma,int num_attributes);
 float clip_value(float num, float low, float high);
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes);
+float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes);
 
 int main(int argc, char *argv[]) {
 	//TODO: command line arguments here
@@ -81,6 +82,12 @@ int main(int argc, char *argv[]) {
 	alpha[I_up] = alpha2_new;
 
 	update_f(f, x, x1, x2, y1, y2, (alpha1_new - alpha1_old), (alpha2_new - alpha2_old), num_train_data, num_attributes);
+
+	float dual_new = dual - (((alpha1_new - alpha1_old)/y1)*(b_low - b_up)) + ((eta/2)*((alpha1_new - alpha1_old)/y1) * ((alpha1_new - alpha1_old)/y1));
+
+	float b = (b_up + b_low) / 2;
+
+	float duality_gap = get_duality_gap(alpha, y, f, c, b, num_train_data, num_attributes);
 
 	return 0;
 }
