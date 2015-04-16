@@ -92,6 +92,12 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+float get_duality_gap(float* alpha, float* y, float* f, float c, float b, int num_train_data, int num_attributes) {
+	float duality_gap = 0;
+
+	return duality_gap;
+}
+
 void update_f(float* f, float* x, float* x1, float* x2, int y1, int y2, float d_alpha1, float d_alpha2, int num_train_data, int num_attributes) {
 	for(int i=0; i<num_train_data; i++) {
 		float* xi = new float[num_attributes];
