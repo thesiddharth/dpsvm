@@ -13,7 +13,7 @@
 
 using namespace std;
 
-void populate_data(char* input_file_name, float* x, int* y, int num_attributes, int num_train_data);
+void populate_data(char* input_file_name, float** x, int* y, int num_attributes, int num_train_data);
 void initialize_f_array(float* f, int* y, int num_train_data);
 void set_I_arrays(float* alpha, int *y, float c, int num_train_data, vector<int> I[5]);
 int get_I_up(float* f, vector<int> I[5]);
@@ -21,10 +21,10 @@ int get_I_low(float* f, vector<int> I[5]);
 void get_x(float* x, float* x_copy, int idx, int num_attributes);
 float rbf_kernel(float* x1,float* x2);
 float clip_value(float num, float low, float high);
-void update_f(float* f, float* x, float* x_low, float* x_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new);
+void update_f(float* f, float** x, int I_low, int I_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new);
 float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes);
 void print_x(float* x);
-float get_train_accuracy(float* x, int* y, float* alpha, float b);
+float get_train_accuracy(float** x, int* y, float* alpha, float b);
 
 typedef struct {
 
@@ -149,8 +149,17 @@ int main(int argc, char *argv[]) {
 	float tolerance = state.epsilon;
 
 	//input data attributes and labels
-	float* x = new float[num_attributes*num_train_data];
+	float** x = new float*[num_train_data];
+	for(int i = 0 ; i < num_train_data; i++) {
+		
+		x[i] = new float[num_attributes]();
+
+	}
+
 	int* y = new int[num_train_data];
+
+	cout << "C: " << state.c << "\n";
+	cout << "Gamma: " << state.gamma << "\n";
 
 	//read data from input file
 	populate_data(input_file_name, x, y, num_attributes, num_train_data);
@@ -181,10 +190,10 @@ int main(int argc, char *argv[]) {
 		set_I_arrays(alpha, y, C, num_train_data, I);
 	
 		cout << I[0].size() << "\n";
-		cout << I[1].size() << "\n";
+		//cout << I[1].size() << "\n";
 		cout << I[2].size() << "\n";
 		cout << I[3].size() << "\n";
-		cout << I[4].size() << "\n";
+		//cout << I[4].size() << "\n";
 
 
 		//get alpha1 and alpha2
@@ -194,25 +203,27 @@ int main(int argc, char *argv[]) {
 		int I_low = get_I_low(f,I);
 		b_low = f[I_low];
 
-		cout << "------------------------\n";
-		cout << "I_hi: " << I_hi << "\n";
-		cout << "I_low: " << I_low << "\n";
-		cout << "------------------------\n";
+		//cout << "------------------------\n";
+		//cout << "I_hi: " << I_hi << "\n";
+		//cout << "I_low: " << I_low << "\n";
+		//cout << "b_low: " << b_low << "\n";
+		//cout << "b_hi: " << b_hi << "\n";
+		//cout << "------------------------\n";
 
-		float* x_low = new float[num_attributes];
-		float* x_hi = new float[num_attributes];
+		//float* x_low = new float[num_attributes];
+		//float* x_hi = new float[num_attributes];
 
-		get_x(x, x_low, I_low, num_attributes);
-		get_x(x, x_hi, I_hi, num_attributes);
+		//get_x(x, x_low, I_low, num_attributes);
+		//get_x(x, x_hi, I_hi, num_attributes);
 
 		int y_low = y[I_low];
 		int y_hi = y[I_hi];
 
-		eta = (2*rbf_kernel(x_low,x_hi)); //- rbf_kernel(x_hi,x_hi) + rbf_kernel(x_low,x_low) - ;
+		eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_low],x[I_low]) - (2*rbf_kernel(x[I_low],x[I_hi])) ;
 		
-		cout << "------------------------\n";
-		cout << "Eta: " << eta << "\n";
-		cout << "------------------------\n";
+		//cout << "------------------------\n";
+		//cout << "Eta: " << eta << "\n";
+		//cout << "------------------------\n";
 
 		float alpha_low_old = alpha[I_low];
 		float alpha_hi_old = alpha[I_hi];
@@ -222,26 +233,26 @@ int main(int argc, char *argv[]) {
 		float alpha_low_new = alpha_low_old + (y_low*(b_hi - b_low)/eta);
 		float alpha_hi_new = alpha_hi_old + (s*(alpha_low_old - alpha_low_new));
 
-		cout << "------------------------\n";
-		cout << "Pre clip aplha low: " << alpha_low_new << "\n";
-		cout << "Pre clip aplha hi: " << alpha_hi_new << "\n";	
-		cout << "------------------------\n";
+		//cout << "------------------------\n";
+		//cout << "Pre clip aplha low: " << alpha_low_new << "\n";
+		//cout << "Pre clip aplha hi: " << alpha_hi_new << "\n";	
+		//cout << "------------------------\n";
 
 		//clip alpha values between 0 and C
 		alpha_low_new = clip_value(alpha_low_new, 0.0, C);
 		alpha_hi_new = clip_value(alpha_hi_new, 0.0, C);
 
-		cout << "------------------------\n";
-		cout << "Post clip aplha low: " << alpha_low_new << "\n";
-		cout << "Post clip aplha hi: " << alpha_hi_new << "\n";	
-		cout << "------------------------\n";
+		//cout << "------------------------\n";
+		//cout << "Post clip aplha low: " << alpha_low_new << "\n";
+		//cout << "Post clip aplha hi: " << alpha_hi_new << "\n";	
+		//cout << "------------------------\n";
 		
 		//store new alpha_1 and alpha_2 values
 		alpha[I_low] = alpha_low_new;
 		alpha[I_hi] = alpha_hi_new;
 
 		//update f values
-		update_f(f, x, x_low, x_hi, y_low, y_hi, alpha_low_old, alpha_hi_old, alpha_low_new, alpha_hi_new);
+		update_f(f, x, I_low, I_hi, y_low, y_hi, alpha_low_old, alpha_hi_old, alpha_low_new, alpha_hi_new);
 
 		//obtain new dual
 		/*float dual_old = dual;
@@ -263,52 +274,85 @@ int main(int argc, char *argv[]) {
 
 		cout << "Duality gap: " << duality_gap << "\n";*/
 
-		delete [] x_low;
-		delete [] x_hi;
+		//delete [] x_low;
+		//delete [] x_hi;
 
-		cout << "------------------------\n";
-		cout << "b_low: " << b_low << "\n";
-		cout << "b_hi + 2* tol: " << b_hi+(2*tolerance) << "\n";
-		cout << "------------------------\n";
+		//cout << "------------------------\n";
+		//cout << "b_low: " << b_low << "\n";
+		//cout << "b_hi: " << b_hi << "\n";
+		//cout << "b_hi + 2* tol: " << b_hi+(2*tolerance) << "\n";
+		//cout << "------------------------\n";
 
 		num_iter++;
 
 		cout << "Current iteration number: " << num_iter << "\n";
 
-	} while((b_low > (b_hi +(2*tolerance))) && (prev_eta != eta));
+	} while((b_low > (b_hi +(2*tolerance))) && num_iter < 40000);// && (prev_eta != eta));
 
 	cout << "Converged at iteration number: " << num_iter << "\n";
 
 	float b = (b_low + b_hi)/2;
 
+	cout << "b: " << b << "\n";
+
 	float train_accuracy = get_train_accuracy(x, y, alpha, b);
 
 	cout << "Training accuracy: " << train_accuracy << "\n";
 
+
+	for(int i = 0 ; i < num_train_data; i++) {
+		
+		delete [] x[i];
+
+	}
+
+	delete [] x;
+
+	delete [] y;
+
+	
+//	write_out_model()
+
+
 	return 0;
 }
 
-float get_train_accuracy(float* x, int* y, float* alpha, float b) {
+
+void write_out_model(float** x, float* alpha, float b) {
+
+	int a;	
+
+
+
+}
+
+
+
+float get_train_accuracy(float** x, int* y, float* alpha, float b) {
 	int num_correct = 0;
 
 	for(int i=0; i<state.num_train_data; i++) {
 		float dual = 0;
 		
-		float* x_i = new float[state.num_attributes];
-		get_x(x, x_i, i, state.num_attributes);
+		//cout << "Checking training example " << i << "\n";
+
+		//float* x_i = new float[state.num_attributes];
+		//get_x(x, x_i, i, state.num_attributes);
 
 		for(int j=0; j<state.num_train_data; j++) {
 			if(alpha[j] != 0) {
-				float* x_j = new float[state.num_attributes];
-				get_x(x, x_j, j, state.num_attributes);
+				//float* x_j = new float[state.num_attributes];
+				//get_x(x, x_j, j, state.num_attributes);
 
-				dual += y[j]*alpha[j]*rbf_kernel(x_j, x_i);
+				dual += y[j]*alpha[j]*rbf_kernel(x[j], x[i]);
 
-				delete [] x_j;
+				//delete [] x_j;
 			}
 		}
 
-		dual += b;
+		//dual += b;
+
+		cout << dual << "\n";
 
 		int result = 1;
 		if(dual < 0) {
@@ -319,7 +363,7 @@ float get_train_accuracy(float* x, int* y, float* alpha, float b) {
 			num_correct++;
 		}
 
-		delete [] x_i;
+		//delete [] x_i;
 	}
 
 	return ((float)num_correct/(state.num_train_data));
@@ -351,19 +395,23 @@ float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_
 	return duality_gap;
 }
 
-void update_f(float* f, float* x, float* x_low, float* x_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new) {
+void update_f(float* f, float** x, int I_low, int I_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new) {
 	
-	float* xi = new float[state.num_attributes];
-	
-	for(int i=0; i<state.num_train_data; i++) {
-		get_x(x, xi, i, state.num_attributes);
+	//float* xi = new float[state.num_attributes];
+	//cout << "---------In update------------\n";
 
-		float delta = (((alpha_hi_new - alpha_hi_old)*y_hi*rbf_kernel(x_hi,xi)) + ((alpha_low_new - alpha_low_old)*y_low*rbf_kernel(x_low,xi)));
+	for(int i=0; i<state.num_train_data; i++) {
+		//get_x(x, xi, i, state.num_attributes);
+
+		float delta = (((alpha_hi_new - alpha_hi_old)*y_hi*rbf_kernel(x[I_hi],x[i])) + ((alpha_low_new - alpha_low_old)*y_low*rbf_kernel(x[I_low],x[i])));
 
 		f[i] += delta;
+
+		//cout << i << ", " << delta << ", " << f[i] << "\n";
 	}
 
-	delete [] xi;
+	//cout << "------------------------------\n";
+	//delete [] xi;
 }
 
 float clip_value(float num, float low, float high) {
@@ -378,14 +426,14 @@ float clip_value(float num, float low, float high) {
 
 float rbf_kernel(float* x1,float* x2) {
 	float* x1_copy = new float[state.num_attributes];
-	float* x2_copy = new float[state.num_attributes];
+	//float* x2_copy = new float[state.num_attributes];
 
 	//deep copy
 	get_x(x1, x1_copy, 0, state.num_attributes);
-	get_x(x2, x2_copy, 0, state.num_attributes);
+	//get_x(x2, x2_copy, 0, state.num_attributes);
 
 	//TODO: See if BLAS has nicer functions
-	cblas_saxpy(state.num_attributes, -1, x2_copy, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
+	cblas_saxpy(state.num_attributes, -1, x2, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
 
 	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
 
@@ -400,7 +448,7 @@ float rbf_kernel(float* x1,float* x2) {
 	//exit(0);
 
 	delete [] x1_copy;
-	delete [] x2_copy;
+	//delete [] x2_copy;
 
 	return result;
 }
@@ -416,7 +464,7 @@ void get_x(float* x, float* x_copy, int idx, int num_attributes) {
 	}
 }
 
-void populate_data(char* input_file_name, float* x, int* y, int num_attributes, int num_train_data)
+void populate_data(char* input_file_name, float** x, int* y, int num_attributes, int num_train_data)
 {
     ifstream file(input_file_name);
 
@@ -444,7 +492,7 @@ void populate_data(char* input_file_name, float* x, int* y, int num_attributes, 
 
         while(getline(lineStream,cell,','))
         {
-            x[(curr_example_num * num_attributes) + curr_attr_num++] = stof(cell);
+            x[curr_example_num][curr_attr_num++] = stof(cell);
         }
 
         ++curr_example_num;
@@ -508,6 +556,7 @@ int get_I_up(float* f, vector<int> I[5]) {
 		}
 	}
 		
+	//cout << "Min: " << min << "\n";	
 	return I_up;
 }
 
@@ -535,7 +584,8 @@ int get_I_low(float* f, vector<int> I[5]) {
 			I_low = *it;
 		}
 	}
-	
+
+	//cout << "Max: " << max << "\n";	
 	return I_low;
 }
 
