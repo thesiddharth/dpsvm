@@ -13,9 +13,9 @@
 
 using namespace std;
 
-void populate_data(char* input_file_name, float** x, int* y, int num_attributes, int num_train_data);
-void initialize_f_array(float* f, int* y, int num_train_data);
-void set_I_arrays(float* alpha, int *y, float c, int num_train_data, vector<int> I[5]);
+void populate_data(float** x, int* y);
+void initialize_f_array(float* f, int* y);
+void set_I_arrays(float* alpha, int *y, vector<int> I[5]);
 int get_I_up(float* f, vector<int> I[5]);
 int get_I_low(float* f, vector<int> I[5]);
 void get_x(float* x, float* x_copy, int idx, int num_attributes);
@@ -25,6 +25,7 @@ void update_f(float* f, float** x, int I_low, int I_hi, int y_low, int y_hi, flo
 float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_train_data, int num_attributes);
 void print_x(float* x);
 float get_train_accuracy(float** x, int* y, float* alpha, float b);
+void write_out_model(float** x, int* y, float* alpha, float b);
 
 typedef struct {
 
@@ -34,9 +35,12 @@ typedef struct {
 	float gamma;
 	float epsilon;
 	char input_file_name[30];
+	char model_file_name[30];
+	int max_iter;
 
 } state_model;
 
+//global structure for training parameters
 static state_model state;
 
 static void usage_exit() {
@@ -54,6 +58,9 @@ static void usage_exit() {
 "						   (default: 1/num-att)"
 "   -e/--epsilon        :  Tolerance of termination criterion\n"
 "						   (default 0.001)"
+"	-n/--max-iter		:  Maximum number of iterations\n"
+"						   (default 150,000"
+"	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
 "\n";
     
 	exit(-1);
@@ -67,6 +74,8 @@ static struct option longOptionsG[] =
     { "gamma",          required_argument,          0,  'g' },
     { "file-path",      required_argument,          0,  'f' },
     { "epsilon",       	required_argument,          0,  'e' },
+    { "max-iter",		required_argument,			0,	'n'	},
+    { "model",			required_argument,			0,	'm' },
     { 0,                0,                          0,   0  }
 };
 
@@ -79,11 +88,13 @@ static void parse_arguments(int argc, char* argv[]) {
 	state.num_train_data = -1;
 	state.gamma = -1;
 	strcpy(state.input_file_name, "");
+	strcpy(state.model_file_name, "");
+	state.max_iter = 150000;
 
     // Parse args
     while (1) {
         int idx = 0;
-        int c = getopt_long(argc, argv, "a:x:c:g:f:e:", longOptionsG, &idx);
+        int c = getopt_long(argc, argv, "a:x:c:g:f:e:n:m:", longOptionsG, &idx);
 
         if (c == -1) {
             // End of options
@@ -109,6 +120,12 @@ static void parse_arguments(int argc, char* argv[]) {
        case 'e':
             state.epsilon = atof(optarg);
             break;
+       case 'n':
+       		state.max_iter = atoi(optarg);
+       		break;
+       case 'm':
+       		strcpy(state.model_file_name, optarg);
+       		break;
         default:
             cerr << "\nERROR: Unknown option: -" << c << "\n";
             // Usage exit
@@ -116,7 +133,7 @@ static void parse_arguments(int argc, char* argv[]) {
         }
     }
 
-	if(strcmp(state.input_file_name,"")==0) {
+	if(strcmp(state.input_file_name,"")==0 || strcmp(state.model_file_name,"")==0) {
 
 		cerr << "Enter a valid file name\n";
 		usage_exit();
@@ -138,114 +155,68 @@ static void parse_arguments(int argc, char* argv[]) {
 
 int main(int argc, char *argv[]) {
 
+	//Obtain the command line arguments
 	parse_arguments(argc, argv);
-	
-	//TODO: command line arguments here
-	int num_attributes = state.num_attributes;
-	int num_train_data = state.num_train_data;
-	float C = state.c;
-	char input_file_name[30];
-	strcpy(input_file_name, state.input_file_name);
-	float tolerance = state.epsilon;
 
 	//input data attributes and labels
-	float** x = new float*[num_train_data];
-	for(int i = 0 ; i < num_train_data; i++) {
+	float** x = new float*[state.num_train_data];
+	for(int i = 0 ; i < state.num_train_data; i++) {
 		
-		x[i] = new float[num_attributes]();
+		x[i] = new float[state.num_attributes]();
 
 	}
 
-	int* y = new int[num_train_data];
-
-	cout << "C: " << state.c << "\n";
-	cout << "Gamma: " << state.gamma << "\n";
+	int* y = new int[state.num_train_data];
 
 	//read data from input file
-	populate_data(input_file_name, x, y, num_attributes, num_train_data);
+	populate_data(x, y);
 
-	cout << "Populated Data" << "\n";
+	cout << "Populated Data from input file\n";
 
 	//Initialize starting values
-	float* alpha = new float[num_train_data]();
-	float* f = new float[num_train_data];
+	float* alpha = new float[state.num_train_data]();
+	float* f = new float[state.num_train_data];
 
-	initialize_f_array(f, y, num_train_data);
+	initialize_f_array(f, y);
 
-	//I sets
+	//I sets based on alpha and y
 	vector<int> I[5];
 
-	//b (intercept)
+	//b (intercept), checks optimality condition for stopping
 	float b_low, b_hi;
 
+	//check iteration number for stopping condition
 	int num_iter = 0;
 
-	float eta, prev_eta;
-	eta = 0;
-
 	do {
-		prev_eta = eta;
 
 		//update the I sets
-		set_I_arrays(alpha, y, C, num_train_data, I);
-	
-		cout << I[0].size() << "\n";
-		//cout << I[1].size() << "\n";
-		cout << I[2].size() << "\n";
-		cout << I[3].size() << "\n";
-		//cout << I[4].size() << "\n";
+		set_I_arrays(alpha, y, I);
 
-
-		//get alpha1 and alpha2
+		//get b_hi and b_low
 		int I_hi = get_I_up(f,I);
 		b_hi = f[I_hi];
 
 		int I_low = get_I_low(f,I);
 		b_low = f[I_low];
 
-		//cout << "------------------------\n";
-		//cout << "I_hi: " << I_hi << "\n";
-		//cout << "I_low: " << I_low << "\n";
-		//cout << "b_low: " << b_low << "\n";
-		//cout << "b_hi: " << b_hi << "\n";
-		//cout << "------------------------\n";
-
-		//float* x_low = new float[num_attributes];
-		//float* x_hi = new float[num_attributes];
-
-		//get_x(x, x_low, I_low, num_attributes);
-		//get_x(x, x_hi, I_hi, num_attributes);
-
 		int y_low = y[I_low];
 		int y_hi = y[I_hi];
 
-		eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_low],x[I_low]) - (2*rbf_kernel(x[I_low],x[I_hi])) ;
-		
-		//cout << "------------------------\n";
-		//cout << "Eta: " << eta << "\n";
-		//cout << "------------------------\n";
+		float eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_low],x[I_low]) - (2*rbf_kernel(x[I_low],x[I_hi])) ;
 
+		//obtain alpha_low and alpha_hi (old values)
 		float alpha_low_old = alpha[I_low];
 		float alpha_hi_old = alpha[I_hi];
 
-		//update alpha1 and alpha2
+		//update alpha_low and alpha_hi
 		float s = y_low*y_hi;
 		float alpha_low_new = alpha_low_old + (y_low*(b_hi - b_low)/eta);
 		float alpha_hi_new = alpha_hi_old + (s*(alpha_low_old - alpha_low_new));
 
-		//cout << "------------------------\n";
-		//cout << "Pre clip aplha low: " << alpha_low_new << "\n";
-		//cout << "Pre clip aplha hi: " << alpha_hi_new << "\n";	
-		//cout << "------------------------\n";
-
-		//clip alpha values between 0 and C
-		alpha_low_new = clip_value(alpha_low_new, 0.0, C);
-		alpha_hi_new = clip_value(alpha_hi_new, 0.0, C);
-
-		//cout << "------------------------\n";
-		//cout << "Post clip aplha low: " << alpha_low_new << "\n";
-		//cout << "Post clip aplha hi: " << alpha_hi_new << "\n";	
-		//cout << "------------------------\n";
+		//clip new alpha values between 0 and C
+		alpha_low_new = clip_value(alpha_low_new, 0.0, state.c);
+		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
 		
 		//store new alpha_1 and alpha_2 values
 		alpha[I_low] = alpha_low_new;
@@ -254,105 +225,81 @@ int main(int argc, char *argv[]) {
 		//update f values
 		update_f(f, x, I_low, I_hi, y_low, y_hi, alpha_low_old, alpha_hi_old, alpha_low_new, alpha_hi_new);
 
-		//obtain new dual
-		/*float dual_old = dual;
-		dual = dual_old - (((alpha1_new - alpha1_old)/y1)*(b_low - b_up)) + ((eta/2)*((alpha1_new - alpha1_old)/y1) * ((alpha1_new - alpha1_old)/y1));
-
-		cout << "------------------------\n";
-		cout << "Dual: " << dual << "\n";	
-		cout << "------------------------\n";
-
-		//get b
-		b = (b_up + b_low) / 2;
-
-		cout << "------------------------\n";
-		cout << "b: " << b << "\n";
-		cout << "------------------------\n";
-
-		//obtain the new duality gap
-		duality_gap = get_duality_gap(alpha, y, f, C, b, num_train_data, num_attributes);
-
-		cout << "Duality gap: " << duality_gap << "\n";*/
-
-		//delete [] x_low;
-		//delete [] x_hi;
-
-		//cout << "------------------------\n";
-		//cout << "b_low: " << b_low << "\n";
-		//cout << "b_hi: " << b_hi << "\n";
-		//cout << "b_hi + 2* tol: " << b_hi+(2*tolerance) << "\n";
-		//cout << "------------------------\n";
-
+		//Increment number of iterations to reach stopping condition
 		num_iter++;
 
 		cout << "Current iteration number: " << num_iter << "\n";
 
-	} while((b_low > (b_hi +(2*tolerance))) && num_iter < 40000);// && (prev_eta != eta));
+	} while((b_low > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 
-	cout << "Converged at iteration number: " << num_iter << "\n";
+	if(b_low > (b_hi + (2*state.epsilon))) {
+		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
+	} else {
+		cout << "Converged at iteration number: " << num_iter << "\n";
+	}
 
+	//obtain final b intercept
 	float b = (b_low + b_hi)/2;
-
 	cout << "b: " << b << "\n";
 
+	//obtain training accuracy
 	float train_accuracy = get_train_accuracy(x, y, alpha, b);
-
 	cout << "Training accuracy: " << train_accuracy << "\n";
 
-
-	for(int i = 0 ; i < num_train_data; i++) {
-		
+	//clear training data
+	for(int i = 0 ; i < state.num_train_data; i++) {	
 		delete [] x[i];
-
 	}
 
 	delete [] x;
-
 	delete [] y;
-
 	
-//	write_out_model()
+	//write model to file
+	write_out_model(x, y, alpha, b);
 
+	cout << "Training model has been saved to the file " << state.model_file_name << "\n";
 
 	return 0;
 }
 
+void write_out_model(float** x, int* y, float* alpha, float b) {
+	//open output filestream for writing the model
+	ofstream model_file;
+	model_file.open(state.model_file_name);
 
-void write_out_model(float** x, float* alpha, float b) {
+	if(model_file.is_open()) {
+		for(int i=0; i<state.num_train_data; i++) {
+			if(alpha[i] != 0) {
+				model_file << alpha[i] << "," << y[i];
 
-	int a;	
+				for(int j=0; j<state.num_attributes; j++) {
+					model_file << "," << x[i][j];
+				}
 
+				model_file << "\n";
+			}
+		}
 
-
+		model_file.close();
+	} else {
+		cout << "Model output file " << state.model_file_name << " could not be opened for writing.\n";
+		exit(-1);
+	}
 }
-
-
 
 float get_train_accuracy(float** x, int* y, float* alpha, float b) {
 	int num_correct = 0;
 
 	for(int i=0; i<state.num_train_data; i++) {
 		float dual = 0;
-		
-		//cout << "Checking training example " << i << "\n";
-
-		//float* x_i = new float[state.num_attributes];
-		//get_x(x, x_i, i, state.num_attributes);
 
 		for(int j=0; j<state.num_train_data; j++) {
 			if(alpha[j] != 0) {
-				//float* x_j = new float[state.num_attributes];
-				//get_x(x, x_j, j, state.num_attributes);
-
 				dual += y[j]*alpha[j]*rbf_kernel(x[j], x[i]);
-
-				//delete [] x_j;
 			}
 		}
 
 		//dual += b;
-
-		cout << dual << "\n";
 
 		int result = 1;
 		if(dual < 0) {
@@ -362,8 +309,6 @@ float get_train_accuracy(float** x, int* y, float* alpha, float b) {
 		if(result == y[i]) {
 			num_correct++;
 		}
-
-		//delete [] x_i;
 	}
 
 	return ((float)num_correct/(state.num_train_data));
@@ -396,22 +341,13 @@ float get_duality_gap(float* alpha, int* y, float* f, float c, float b, int num_
 }
 
 void update_f(float* f, float** x, int I_low, int I_hi, int y_low, int y_hi, float alpha_low_old, float alpha_hi_old, float alpha_low_new, float alpha_hi_new) {
-	
-	//float* xi = new float[state.num_attributes];
-	//cout << "---------In update------------\n";
 
 	for(int i=0; i<state.num_train_data; i++) {
-		//get_x(x, xi, i, state.num_attributes);
 
 		float delta = (((alpha_hi_new - alpha_hi_old)*y_hi*rbf_kernel(x[I_hi],x[i])) + ((alpha_low_new - alpha_low_old)*y_low*rbf_kernel(x[I_low],x[i])));
 
 		f[i] += delta;
-
-		//cout << i << ", " << delta << ", " << f[i] << "\n";
 	}
-
-	//cout << "------------------------------\n";
-	//delete [] xi;
 }
 
 float clip_value(float num, float low, float high) {
@@ -426,7 +362,6 @@ float clip_value(float num, float low, float high) {
 
 float rbf_kernel(float* x1,float* x2) {
 	float* x1_copy = new float[state.num_attributes];
-	//float* x2_copy = new float[state.num_attributes];
 
 	//deep copy
 	get_x(x1, x1_copy, 0, state.num_attributes);
@@ -437,18 +372,9 @@ float rbf_kernel(float* x1,float* x2) {
 
 	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
 
-	//float result = (float)exp((double)state.gamma*norm*norm);
-
 	float result = (float)exp(-1 *(double)state.gamma*norm*norm);
 
-	//cout << "Norm: " << norm << "\n";
-	//cout << "Res1: " << result <<"\n";
-	//cout << "Res2: " << result2 << "\n";
-
-	//exit(0);
-
 	delete [] x1_copy;
-	//delete [] x2_copy;
 
 	return result;
 }
@@ -464,9 +390,9 @@ void get_x(float* x, float* x_copy, int idx, int num_attributes) {
 	}
 }
 
-void populate_data(char* input_file_name, float** x, int* y, int num_attributes, int num_train_data)
+void populate_data(float** x, int* y)
 {
-    ifstream file(input_file_name);
+    ifstream file(state.input_file_name);
 
     if(!file.is_open())
     {
@@ -477,7 +403,7 @@ void populate_data(char* input_file_name, float** x, int* y, int num_attributes,
     string line;
     int curr_example_num = 0;
 
-    while (curr_example_num < num_train_data)
+    while (curr_example_num < state.num_train_data)
     {
         getline(file,line);
 
@@ -499,27 +425,27 @@ void populate_data(char* input_file_name, float** x, int* y, int num_attributes,
     }
 }
 
-void initialize_f_array(float* f, int* y, int num_train_data) {
-	for(int i=0; i<num_train_data; i++) {
+void initialize_f_array(float* f, int* y) {
+	for(int i=0; i<state.num_train_data; i++) {
 		f[i] = -1*y[i];
 	}
 }
 
-void set_I_arrays(float* alpha, int* y, float c, int num_train_data, vector<int> I[5]) {
+void set_I_arrays(float* alpha, int* y, vector<int> I[5]) {
 	//clear vectors before populating
 	for(int i=0; i<5; ++i) {
 		I[i].clear();
 	}
 		
 	//populate the I sets
-	for(int i=0; i<num_train_data; ++i) {
+	for(int i=0; i<state.num_train_data; ++i) {
 		if(alpha[i] == 0) {
 			if(y[i] == 1) {
 				I[1].push_back(i);
 			} else {
 				I[4].push_back(i);
 			}
-		} else if(alpha[i] == c) {
+		} else if(alpha[i] == state.c) {
 			if(y[i] == -1) {
 				I[2].push_back(i);
 			} else {
