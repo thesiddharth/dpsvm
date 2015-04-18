@@ -7,6 +7,13 @@
 #include <cuda.h>
 #include <cblas.h>
 #include <vector>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string.h>
+#include <getopt.h>
+#include <math.h>
+#include <string>
 
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
@@ -25,6 +32,137 @@ using namespace std;
 void SvmTrain::setup() {
 
 	cout << "A late goodbye";
+}
+
+float rbf_kernel(thrust::host_vector<float> x1, thrust::host_vector<float> x2);
+float clip_value(float num, float low, float high);
+void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y);
+
+
+typedef struct {
+
+	int num_attributes;
+	int num_train_data;
+	float c;
+	float gamma;
+	float epsilon;
+	char input_file_name[30];
+	char model_file_name[30];
+	int max_iter;
+
+} state_model;
+
+//global structure for training parameters
+static state_model state;
+
+static void usage_exit() {
+    cerr <<
+"   Command Line:\n"
+"\n"
+"   -a/--num-att        :  [REQUIRED] The number of attributes\n"
+"									  /features\n"
+"   -x/--num-ex       	:  [REQUIRED] The number of training \n"
+"									  examples\n"
+"   -f/--file-path      :  [REQUIRED] Path to the training file\n"
+"   -c/--cost        	:  Parameter c of the SVM (default 1)\n"
+"   -g/--gamma       	:  Parameter gamma of the radial basis\n"
+"						   function: exp(-gamma*|u-v|^2)\n"
+"						   (default: 1/num-att)"
+"   -e/--epsilon        :  Tolerance of termination criterion\n"
+"						   (default 0.001)"
+"	-n/--max-iter		:  Maximum number of iterations\n"
+"						   (default 150,000"
+"	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
+"\n";
+    
+	exit(-1);
+}
+
+static struct option longOptionsG[] =
+{
+    { "num-att",        required_argument,          0,  'a' },
+    { "num-ex",         required_argument,          0,  'x' },
+    { "cost",           required_argument,          0,  'c' },
+    { "gamma",          required_argument,          0,  'g' },
+    { "file-path",      required_argument,          0,  'f' },
+    { "epsilon",       	required_argument,          0,  'e' },
+    { "max-iter",		required_argument,			0,	'n'	},
+    { "model",			required_argument,			0,	'm' },
+    { 0,                0,                          0,   0  }
+};
+
+static void parse_arguments(int argc, char* argv[]) {
+
+    // Default Values
+    state.epsilon = 0.001;
+    state.c = 1;
+	state.num_attributes = -1;
+	state.num_train_data = -1;
+	state.gamma = -1;
+	strcpy(state.input_file_name, "");
+	strcpy(state.model_file_name, "");
+	state.max_iter = 150000;
+
+    // Parse args
+    while (1) {
+        int idx = 0;
+        int c = getopt_long(argc, argv, "a:x:c:g:f:e:n:m:", longOptionsG, &idx);
+
+        if (c == -1) {
+            // End of options
+            break;
+        }
+
+        switch (c) {
+        case 'a':
+            state.num_attributes = atoi(optarg);
+            break;
+        case 'x':
+            state.num_train_data = atoi(optarg);
+            break;
+        case 'c':
+            state.c = atof(optarg);
+            break;
+        case 'g':
+            state.gamma = atof(optarg);
+            break;
+       case 'f':
+            strcpy(state.input_file_name, optarg);
+            break;
+       case 'e':
+            state.epsilon = atof(optarg);
+            break;
+       case 'n':
+       		state.max_iter = atoi(optarg);
+       		break;
+       case 'm':
+       		strcpy(state.model_file_name, optarg);
+       		break;
+        default:
+            cerr << "\nERROR: Unknown option: -" << c << "\n";
+            // Usage exit
+            usage_exit();
+        }
+    }
+
+	if(strcmp(state.input_file_name,"")==0 || strcmp(state.model_file_name,"")==0) {
+
+		cerr << "Enter a valid file name\n";
+		usage_exit();
+	}
+
+	if(state.num_attributes <= 0 || state.num_train_data <= 0) {
+
+		cerr << "Missing a required parameter, or invalid parameter\n";
+		usage_exit();
+
+	}
+
+	if(state.gamma < 0) {
+
+		state.gamma = 1 / state.num_attributes;
+	}
+
 }
 
 // Scalars
@@ -435,3 +573,67 @@ int main(int argc, char *argv[]) {
 }
 
 
+float clip_value(float num, float low, float high) {
+	if(num < low) {
+		return low;
+	} else if(num > high) {
+		return high;
+	}
+
+	return num;
+}
+
+
+void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y)
+{
+    ifstream file(state.input_file_name);
+
+    if(!file.is_open())
+    {
+        cout << "Couldn't open file";
+        return;
+    }
+    //std::vector<std::string>   result;
+    string line;
+    int curr_example_num = 0;
+
+    while (curr_example_num < state.num_train_data)
+    {
+        getline(file,line);
+
+        stringstream lineStream(line);
+        string cell;
+
+        getline(lineStream,cell,',');
+
+        y[curr_example_num] = stoi(cell);
+
+        int curr_attr_num = 0;
+
+        while(getline(lineStream,cell,','))
+        {
+            x[(curr_example_num * state.num_attributes) + curr_attr_num++] = stof(cell);
+        }
+
+        ++curr_example_num;
+    }
+}
+
+float rbf_kernel(thrust::host_vector<float> x1, thrust::host_vector<float> x2){
+	float* x1_copy = new float[state.num_attributes];
+
+	//deep copy
+	get_x(x1, x1_copy, 0, state.num_attributes);
+	//get_x(x2, x2_copy, 0, state.num_attributes);
+
+	//TODO: See if BLAS has nicer functions
+	cblas_saxpy(state.num_attributes, -1, x2, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
+
+	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
+
+	float result = (float)exp(-1 *(double)state.gamma*norm*norm);
+
+	delete [] x1_copy;
+
+	return result;
+}
