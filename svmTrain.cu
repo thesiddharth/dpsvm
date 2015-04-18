@@ -2,11 +2,436 @@
 #include <stdlib.h>
 #include "svmTrain.h"
 #include <iostream>
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cuda.h>
+#include <cblas.h>
+#include <vector>
+
+#include <thrust/host_vector.h> 
+#include <thrust/device_vector.h> 
+#include <thrust/copy.h> 
+#include <thrust/fill.h> 
+#include <thrust/sequence.h>
+#include <thrust/for_each.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/inner_product.h>
+#include <thrust/extrema.h>
+
+#define IDX2C(i,j,ld) (((j)*(ld))+(i))
 
 using namespace std;
 
 void SvmTrain::setup() {
 
 	cout << "A late goodbye";
-
 }
+
+// Scalars
+const float alpha = 1;
+const float beta = 0;
+
+
+struct arbitrary_functor
+{
+
+	const float C; 
+
+	arbitrary_functor(float _c) : C(_c) {}
+
+    template <typename Tuple>
+    __host__ __device__
+    void operator()(Tuple t)
+    {
+        // I_set[i] = Alpha[i],  Y[i] , f[i], I_set1[i], I_set2[i];
+		if(thrust::get<0>(t) == 0) {
+		
+			if(thrust::get<1>(t) == 1) {
+			
+				thrust::get<3>(t) = thrust::get<2>(t);
+				
+			}
+			
+			else {
+				
+				thrust::get<4>(t) = thrust::get<2>(t);
+				
+			}
+
+		}	else if(thrust::get<0>(t) == C) {
+		
+			if(thrust::get<1>(t) == -1) {
+			
+				thrust::get<3>(t) = thrust::get<2>(t);
+				
+			}
+			
+			else {
+				
+				thrust::get<4>(t) = thrust::get<2>(t);
+				
+			}
+
+		}	else {
+		
+			thrust::get<3>(t) = thrust::get<2>(t);
+			thrust::get<4>(t) = thrust::get<2>(t);
+			
+		}
+	}
+};
+
+
+struct update_functor
+{
+	const float gamma;
+	const float alpha_lo_old;
+	const float alpha_hi_old;
+	const float alpha_lo_new;
+	const float alpha_hi_new;
+	const int y_lo;
+	const int y_hi;
+	const float x_hi_sq;
+	const float x_lo_sq;
+
+	update_functor(float _gamma, float _alpha_lo_old, float _alpha_hi_old, float _alpha_lo_new, float _alpha_hi_new, int _y_lo, int _y_hi, float _x_hi_sq, float _x_lo_sq) : 
+
+	gamma(_gamma), 
+	alpha_lo_old(_alpha_lo_old), 
+	alpha_hi_old(_alpha_hi_new), 
+	alpha_lo_new(_alpha_lo_new), 
+	alpha_hi_new(_alpha_hi_new), 
+	y_lo(_y_lo), 
+	y_hi(_y_hi),
+	x_hi_sq(_x_hi_sq),
+	x_lo_sq(_x_lo_sq) 
+
+	{}
+
+    template <typename Tuple>
+    __host__ __device__
+    void operator()(Tuple t)
+    {
+		float rbf_hi = expf(-1 * gamma * (thrust::get<2>(t) + x_hi_sq - (2*thrust::get<0>(t)) ));
+		float rbf_lo = expf(-1 * gamma * (thrust::get<2>(t) + x_lo_sq - (2*thrust::get<1>(t)) ));
+
+		float delta = (((alpha_hi_new-alpha_hi_old)*y_hi*rbf_hi) + ((alpha_lo_new - alpha_lo_old)*y_lo*rbf_lo));
+	
+		thrust::get<3>(t) += delta;	
+	}
+};
+
+
+/*__global__ void kernel_I_set(float* g_alpha, float* g_y, float* g_I_set1, float* g_I_set2, int num_attr, int num_train_data) {
+
+	int myIdx = ((blockDim.x * blockIdx.x) + threadIdx.x);
+
+	if (myIdx >= num_train_data)
+		return;
+
+	if (g_alpha[myIdx] == 0) {
+		if(g_y[i] == 1) {
+			g_I_set1[myIdx] = ;
+		} else {
+			I[4].push_back(i);
+		}
+	} else if(alpha[i] == state.c) {
+		if(y[i] == -1) {
+			I[2].push_back(i);
+		} else {
+			I[3].push_back(i);
+		}
+	} else {
+			I[0].push_back(i);
+	}
+}*/
+
+
+/*__global__ void kernelReduction() {
+
+	int myIdx = ((blockDim.x * blockIdx.x) + threadIdx.x);
+
+	float delta = (((alpha_i_new - alpha_hi_old)*y_hi*rbf_kernel(x[],x[i])) +lpa_low_new - alpha_low_old)*y_low*rbf_kernel(x[I_low],x[i])
+
+    f[i] += delta;
+
+}*/
+
+
+int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
+
+	cublasStatus_t status;
+	cudaError_t cudaStat;
+	cublasHandle_t handle;
+	
+	status = cublasCreate(&handle);
+	
+	if (status != CUBLAS_STATUS_SUCCESS) { 
+
+		cout << "CUBLAS initialization failed\n"; 
+		return EXIT_FAILURE; 
+	}
+
+//	nfa = len_tv * ntv; 
+
+//	tva = (float*) malloc ( len_tv * ntv* sizeof(float) );
+//	vtm = (float*) malloc ( len_tv * sizeof(float) );
+	
+//	empty  = (float*) calloc ( state.num_attributes, sizeof(float) );
+	
+
+//	tr_ar = (float*) malloc ( len_tv * ntv* sizeof(float) );
+
+//	tv_sq = (double*) malloc ( ntv * sizeof(double) );
+
+//	v_f_g  = (double*) malloc ( ntv * sizeof(double) );
+
+//	for ( i_r = 0; i_r < ntv ; i_r++ )
+//	{				 
+//		for ( i_c = 0; i_c < len_tv; i_c++ ) 
+//			tva[i_r * len_tv + i_c] = (float)prob-> x[i_r].values[i_c];
+//	}
+
+//	cudaStat = cudaMalloc((void**)&g_tva, len_tv * ntv * sizeof(float));
+	
+/*	if (cudaStat != cudaSuccess) {
+		free( tva );
+		free( vtm );
+
+		free( v_f_g );
+		free( tv_sq );
+
+		cudaFree( g_tva );
+		cublasDestroy( handle );	
+	
+		fprintf (stderr, "!!!! Device memory allocation error (A)\n");
+		getchar();
+		return;
+    }
+
+	cudaStat = cudaMalloc((void**)&g_x_hi, state.num_attributes * sizeof(float));
+	cudaStat = cudaMalloc((void**)&g_x_lo, state.num_attributes * sizeof(float));
+
+	cudaStat = cudaMalloc((void**)&g_hi_dotprod, state.num_train_data * sizeof(float));
+	cudaStat = cudaMalloc((void**)&g_lo_dotprod, state.num_train_data * sizeof(float));
+
+	for( i_r = 0; i_r < ntv; i_r++ )
+		for( i_c = 0; i_c < len_tv; i_c++ )
+			tr_ar[i_c * ntv + i_r] = tva[i_r * len_tv + i_c];
+
+	// Copy cpu vector to gpu vector
+	status = cublasSetVector( len_tv * ntv, sizeof(float), tr_ar, 1, g_tva, 1 );
+    
+	free( tr_ar );
+*/
+////////////////////////////////////////////////////////
+
+	/*	//Calculate x.x, to be done once only, outside
+
+	for( int i = 0; i < state.num_train_data; i++ )
+	{
+		//tv[i] = 0;
+		//for( i_el = 0; i_el < len_tv; i_el++ )
+		tv_sq[i] = cblas_sdot(state.num_attributes, x[i], 1, x[i], 1);
+	}
+
+	//Create streams
+*/
+	thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
+	thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
+
+	cudaStream_t stream1;
+	cudaStream_t stream2;
+
+	cudaStat = cudaStreamCreate(&stream1);
+	cudaStat = cudaStreamCreate(&stream2);
+
+	//Allocate x_hi, x_lo and an empty vector in device	i
+
+	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
+	float* raw_g_f = thrust::raw_pointer_cast(&g_f[0]);
+	float* raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
+	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+
+	//status = cublasSetVector(state.num_attributes, sizeof(float), &x[I_hi * state.num_attributes], 1, g_x_hi, 1 );
+	
+	//status = cublasSetVector(state.num_attributes, sizeof(float), &x[I_lo * state.num_attributes], 1, g_x_lo, 1 );
+	
+	//status = cublasSetMatrix(state.num_train_data, state.num_attributes, sizeof(float), x, 1, g_x, 1 );
+	
+	//status = cublasSetVector(state.num_attributes, sizeof(float), empty, 1, g_empty, 1 );
+
+	status = cublasSetStream(handle, stream1);
+
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+
+	cublasSetStream(handle, stream2);
+	
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+
+	//status = cublasGetVector( ntv, sizeof(float), g_DotProd, 1, DP, 1 );
+
+	//for ( i_c = 0; i_c < ntv; i_c++ )
+	//	v_f_g[i_c] = exp( -g_val * (tv_sq[trvei] + tv_sq[i_c]-((double)2.0)* (double)DP[i_c] ));
+
+	float x_hi_sq = g_x_sq[I_hi];
+	float x_lo_sq = g_x_sq[I_lo];
+		
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.begin(), g_lo_dotprod.begin(), g_x_sq.begin(), g_f.begin())),
+   	                 thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.end(), g_lo_dotprod.end(), g_x_sq.end(),g_f.end())),
+       	             update_functor(state.gamma, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new, y_lo, y_hi, x_hi_sq, x_lo_sq));
+
+
+/////////////////////////////////////////////////////////
+
+	cublasDestroy( handle );
+
+	return 0;
+}
+
+
+int main(int argc, char *argv[]) {
+
+	//Obtain the command line arguments
+	parse_arguments(argc, argv);
+
+	//input data attributes and labels
+	thrust::host_vector<float> x (state.num_train_data * state.num_attributes);
+	thrust::host_vector<int> y (state.num_train_data);
+	
+	//read data from input file
+	populate_data(x, y);
+
+	cout << "Populated Data from input file\n";
+
+	//Copy x and y to device
+	thrust::device_vector<float> g_x (x.begin(), x.end());
+	thrust::device_vector<int> g_y(y.begin(), y.end());
+	
+	thrust::device_vector<float> g_x_hi(state.num_attributes);
+	thrust::device_vector<float> g_x_lo(state.num_attributes);
+	
+	// Initialize f on device
+	thrust::device_vector<float> g_f(state.num_train_data);
+	thrust::transform(g_f.begin(), g_f.end(), g_y.begin(), thrust::negate<float>());
+
+	//Initialize alpha on device
+	thrust::device_vector<int> g_alpha(state.num_train_data, 0);
+	
+	//b (intercept), checks optimality condition for stopping
+	float b_lo, b_hi;
+
+	//check iteration number for stopping condition
+	int num_iter = 0;
+ 
+
+	//status = cublasSetMatrix(state.num_train_data, state.num_attributes, sizeof(float), x, 1, g_x, 1 );
+
+	//thrust::host_vector<float> x2 (state.num_train_data);	
+	thrust::host_vector<float> g_x_sq (state.num_train_data);	
+
+	for( int i = 0; i < state.num_train_data; i++ )
+	{
+		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
+	}
+	
+	//float* x_sq = new float[state.num_train_data]; 
+
+	// Allocate x.x on device
+	//cudaStat = cudaMalloc((void**)&g_x_sq, state.num_train_data * sizeof(float));
+	
+	//for( int i = 0; i < state.num_train_data; i++ )
+	//{
+		//x_sq[i] = cblas_sdot(state.num_attributes, x[i*state.num_attributes], 1, x[i], 1);
+	//	status = cublasSdot(handle, state.num_attributes, &x[i*state.num_attributes] ,1, &x[i*state.num_attributes] ,1 , &g_x_sq[i*state.num_attributes]);
+	//}
+
+	//cudaStat = cudaMalloc(&g_x_hi, state.num_attributes * sizeof(float));
+	//cudaStat = cudaMalloc(&g_x_lo, state.num_attributes * sizeof(float));
+	
+	thrust::device_vector<float>::iterator iter;
+	
+	do {
+
+		//Set up I_set1 and I_set2
+		thrust::device_vector<int> g_I_set1(state.num_train_data, 1000000000);
+		thrust::device_vector<int> g_I_set2(state.num_train_data, -1000000000);
+		
+		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
+    	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
+        	             arbitrary_functor(state.c));
+
+		//get b_hi and b_low
+		iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());
+
+		int I_lo = iter - g_I_set2.begin();
+		b_lo = *iter;
+
+		iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
+
+		int I_hi = iter - g_I_set1.begin();
+		b_hi = *iter;
+
+		int y_lo = y[I_lo];
+		int y_hi = y[I_hi];
+
+		float eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_lo],x[I_lo]) - (2*rbf_kernel(x[I_lo],x[I_hi])) ;
+
+		//obtain alpha_low and alpha_hi (old values)
+		float alpha_lo_old = g_alpha[I_lo];
+		float alpha_hi_old = g_alpha[I_hi];
+
+		//update alpha_low and alpha_hi
+		float s = y_lo*y_hi;
+		float alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
+		float alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
+
+		//clip new alpha values between 0 and C
+		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
+		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
+		
+		//store new alpha_1 and alpha_2 values
+		g_alpha[I_lo] = alpha_lo_new;
+		g_alpha[I_hi] = alpha_hi_new;
+
+		//update f values
+		update_f(g_f, g_x, g_x_sq, I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
+
+		//Increment number of iterations to reach stopping condition
+		num_iter++;
+
+		cout << "Current iteration number: " << num_iter << "\n";
+
+	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
+
+	if(b_lo > (b_hi + (2*state.epsilon))) {
+		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
+	} else {
+		cout << "Converged at iteration number: " << num_iter << "\n";
+	}
+
+	//obtain final b intercept
+	float b = (b_lo + b_hi)/2;
+	cout << "b: " << b << "\n";
+
+	//obtain training accuracy
+	//float train_accuracy = get_train_accuracy(x, y, alpha, b);
+	//cout << "Training accuracy: " << train_accuracy << "\n";
+
+	//write model to file
+	//write_out_model(x, y, alpha, b);
+
+	//cout << "Training model has been saved to the file " << state.model_file_name << "\n";
+
+	//clear training data
+	//for(int i = 0 ; i < state.num_train_data; i++) {	
+	//	delete [] x[i];
+	//}
+
+	//delete [] x;
+	//delete [] y;
+
+	return 0;
+}
+
+
