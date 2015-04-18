@@ -148,7 +148,7 @@ static void parse_arguments(int argc, char* argv[]) {
 
 	if(state.gamma < 0) {
 
-		state.gamma = 1 / state.num_train_data;
+		state.gamma = 1 / state.num_attributes;
 	}
 
 }
@@ -246,6 +246,11 @@ int main(int argc, char *argv[]) {
 	float train_accuracy = get_train_accuracy(x, y, alpha, b);
 	cout << "Training accuracy: " << train_accuracy << "\n";
 
+	//write model to file
+	write_out_model(x, y, alpha, b);
+
+	cout << "Training model has been saved to the file " << state.model_file_name << "\n";
+
 	//clear training data
 	for(int i = 0 ; i < state.num_train_data; i++) {	
 		delete [] x[i];
@@ -253,11 +258,6 @@ int main(int argc, char *argv[]) {
 
 	delete [] x;
 	delete [] y;
-	
-	//write model to file
-	write_out_model(x, y, alpha, b);
-
-	cout << "Training model has been saved to the file " << state.model_file_name << "\n";
 
 	return 0;
 }
@@ -268,6 +268,9 @@ void write_out_model(float** x, int* y, float* alpha, float b) {
 	model_file.open(state.model_file_name);
 
 	if(model_file.is_open()) {
+		//gamma used in kernel for training
+		model_file << state.gamma << "\n";
+
 		for(int i=0; i<state.num_train_data; i++) {
 			if(alpha[i] != 0) {
 				model_file << alpha[i] << "," << y[i];
