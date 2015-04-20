@@ -64,6 +64,12 @@
 	We could possibly have a small demo on classifying one of the smaller datasets in the presentation (dependent on the time constraint), as the runtimes for these datasets would be under 30 seconds.
 </p>
 
+<h3>
+<a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Preliminary Results</h3>
+
+<p dir="ltr">
+	We’ve been using 8 increasingly large versions of the Adult dataset (available <a href="http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary.html">here</a>) to verify our sequential implementation against LibSVM. Our accuracy matches that of LibSVM for all cases, with the time going from approximately the same for smaller training data sets (1605 examples) to around 2x that of LibSVM for bigger sets (32,561 examples). We expect to beat the LibSVM time with our parallel implementation.
+</p>
 
 <h3>
 <a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Issues</h3>
