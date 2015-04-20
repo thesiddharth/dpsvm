@@ -34,10 +34,10 @@ void SvmTrain::setup() {
 	cout << "A late goodbye";
 }
 
-float rbf_kernel(thrust::host_vector<float> x1, thrust::host_vector<float> x2);
 float clip_value(float num, float low, float high);
 void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y);
-
+float rbf_kernel(thrust::host_vector<float> x, int i1, int i2);
+void get_x(float* x, float* x_copy, int idx, int num_attributes);
 
 typedef struct {
 
@@ -259,43 +259,6 @@ struct update_functor
 	}
 };
 
-
-/*__global__ void kernel_I_set(float* g_alpha, float* g_y, float* g_I_set1, float* g_I_set2, int num_attr, int num_train_data) {
-
-	int myIdx = ((blockDim.x * blockIdx.x) + threadIdx.x);
-
-	if (myIdx >= num_train_data)
-		return;
-
-	if (g_alpha[myIdx] == 0) {
-		if(g_y[i] == 1) {
-			g_I_set1[myIdx] = ;
-		} else {
-			I[4].push_back(i);
-		}
-	} else if(alpha[i] == state.c) {
-		if(y[i] == -1) {
-			I[2].push_back(i);
-		} else {
-			I[3].push_back(i);
-		}
-	} else {
-			I[0].push_back(i);
-	}
-}*/
-
-
-/*__global__ void kernelReduction() {
-
-	int myIdx = ((blockDim.x * blockIdx.x) + threadIdx.x);
-
-	float delta = (((alpha_i_new - alpha_hi_old)*y_hi*rbf_kernel(x[],x[i])) +lpa_low_new - alpha_low_old)*y_low*rbf_kernel(x[I_low],x[i])
-
-    f[i] += delta;
-
-}*/
-
-
 int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
 
 	cublasStatus_t status;
@@ -310,71 +273,6 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 		return EXIT_FAILURE; 
 	}
 
-//	nfa = len_tv * ntv; 
-
-//	tva = (float*) malloc ( len_tv * ntv* sizeof(float) );
-//	vtm = (float*) malloc ( len_tv * sizeof(float) );
-	
-//	empty  = (float*) calloc ( state.num_attributes, sizeof(float) );
-	
-
-//	tr_ar = (float*) malloc ( len_tv * ntv* sizeof(float) );
-
-//	tv_sq = (double*) malloc ( ntv * sizeof(double) );
-
-//	v_f_g  = (double*) malloc ( ntv * sizeof(double) );
-
-//	for ( i_r = 0; i_r < ntv ; i_r++ )
-//	{				 
-//		for ( i_c = 0; i_c < len_tv; i_c++ ) 
-//			tva[i_r * len_tv + i_c] = (float)prob-> x[i_r].values[i_c];
-//	}
-
-//	cudaStat = cudaMalloc((void**)&g_tva, len_tv * ntv * sizeof(float));
-	
-/*	if (cudaStat != cudaSuccess) {
-		free( tva );
-		free( vtm );
-
-		free( v_f_g );
-		free( tv_sq );
-
-		cudaFree( g_tva );
-		cublasDestroy( handle );	
-	
-		fprintf (stderr, "!!!! Device memory allocation error (A)\n");
-		getchar();
-		return;
-    }
-
-	cudaStat = cudaMalloc((void**)&g_x_hi, state.num_attributes * sizeof(float));
-	cudaStat = cudaMalloc((void**)&g_x_lo, state.num_attributes * sizeof(float));
-
-	cudaStat = cudaMalloc((void**)&g_hi_dotprod, state.num_train_data * sizeof(float));
-	cudaStat = cudaMalloc((void**)&g_lo_dotprod, state.num_train_data * sizeof(float));
-
-	for( i_r = 0; i_r < ntv; i_r++ )
-		for( i_c = 0; i_c < len_tv; i_c++ )
-			tr_ar[i_c * ntv + i_r] = tva[i_r * len_tv + i_c];
-
-	// Copy cpu vector to gpu vector
-	status = cublasSetVector( len_tv * ntv, sizeof(float), tr_ar, 1, g_tva, 1 );
-    
-	free( tr_ar );
-*/
-////////////////////////////////////////////////////////
-
-	/*	//Calculate x.x, to be done once only, outside
-
-	for( int i = 0; i < state.num_train_data; i++ )
-	{
-		//tv[i] = 0;
-		//for( i_el = 0; i_el < len_tv; i_el++ )
-		tv_sq[i] = cblas_sdot(state.num_attributes, x[i], 1, x[i], 1);
-	}
-
-	//Create streams
-*/
 	thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 	thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
 
@@ -391,14 +289,6 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 	float* raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
 	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
 
-	//status = cublasSetVector(state.num_attributes, sizeof(float), &x[I_hi * state.num_attributes], 1, g_x_hi, 1 );
-	
-	//status = cublasSetVector(state.num_attributes, sizeof(float), &x[I_lo * state.num_attributes], 1, g_x_lo, 1 );
-	
-	//status = cublasSetMatrix(state.num_train_data, state.num_attributes, sizeof(float), x, 1, g_x, 1 );
-	
-	//status = cublasSetVector(state.num_attributes, sizeof(float), empty, 1, g_empty, 1 );
-
 	status = cublasSetStream(handle, stream1);
 
 	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
@@ -406,11 +296,6 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 	cublasSetStream(handle, stream2);
 	
 	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
-
-	//status = cublasGetVector( ntv, sizeof(float), g_DotProd, 1, DP, 1 );
-
-	//for ( i_c = 0; i_c < ntv; i_c++ )
-	//	v_f_g[i_c] = exp( -g_val * (tv_sq[trvei] + tv_sq[i_c]-((double)2.0)* (double)DP[i_c] ));
 
 	float x_hi_sq = g_x_sq[I_hi];
 	float x_lo_sq = g_x_sq[I_lo];
@@ -462,30 +347,12 @@ int main(int argc, char *argv[]) {
 	//check iteration number for stopping condition
 	int num_iter = 0;
  
-
-	//status = cublasSetMatrix(state.num_train_data, state.num_attributes, sizeof(float), x, 1, g_x, 1 );
-
-	//thrust::host_vector<float> x2 (state.num_train_data);	
 	thrust::host_vector<float> g_x_sq (state.num_train_data);	
 
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
-	
-	//float* x_sq = new float[state.num_train_data]; 
-
-	// Allocate x.x on device
-	//cudaStat = cudaMalloc((void**)&g_x_sq, state.num_train_data * sizeof(float));
-	
-	//for( int i = 0; i < state.num_train_data; i++ )
-	//{
-		//x_sq[i] = cblas_sdot(state.num_attributes, x[i*state.num_attributes], 1, x[i], 1);
-	//	status = cublasSdot(handle, state.num_attributes, &x[i*state.num_attributes] ,1, &x[i*state.num_attributes] ,1 , &g_x_sq[i*state.num_attributes]);
-	//}
-
-	//cudaStat = cudaMalloc(&g_x_hi, state.num_attributes * sizeof(float));
-	//cudaStat = cudaMalloc(&g_x_lo, state.num_attributes * sizeof(float));
 	
 	thrust::device_vector<float>::iterator iter;
 	
@@ -513,7 +380,7 @@ int main(int argc, char *argv[]) {
 		int y_lo = y[I_lo];
 		int y_hi = y[I_hi];
 
-		float eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_lo],x[I_lo]) - (2*rbf_kernel(x[I_lo],x[I_hi])) ;
+		float eta = rbf_kernel(x,I_hi,I_hi) + rbf_kernel(x,I_lo,I_lo) - (2*rbf_kernel(x,I_lo,I_hi)) ;
 
 		//obtain alpha_low and alpha_hi (old values)
 		float alpha_lo_old = g_alpha[I_lo];
@@ -619,21 +486,35 @@ void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y)
     }
 }
 
-float rbf_kernel(thrust::host_vector<float> x1, thrust::host_vector<float> x2){
-	float* x1_copy = new float[state.num_attributes];
 
-	//deep copy
-	get_x(x1, x1_copy, 0, state.num_attributes);
-	//get_x(x2, x2_copy, 0, state.num_attributes);
+void get_x(float* x, float* x_copy, int idx, int num_attributes) {
+	int ctr = 0;
 
-	//TODO: See if BLAS has nicer functions
-	cblas_saxpy(state.num_attributes, -1, x2, 1, x1_copy, 1); // x1_copy = -x2_copy + x1_copy
+	int start_index = (idx*num_attributes);
+	int end_index = start_index+num_attributes;
 
-	float norm = cblas_snrm2(state.num_attributes, x1_copy, 1);
+	for(int i = start_index; i < end_index; i++) {
+		x_copy[ctr++] = x[i];
+	}
+}
 
-	float result = (float)exp(-1 *(double)state.gamma*norm*norm);
 
-	delete [] x1_copy;
+float rbf_kernel(thrust::host_vector<float> x, int i1, int i2){
+	
+	float* i2_copy = new float[state.num_attributes];
+
+	float* raw_i1 = thrust::raw_pointer_cast(&x[i1*state.num_attributes]);
+	float* raw_i2 = thrust::raw_pointer_cast(&x[i2*state.num_attributes]);
+
+	get_x(raw_i2, i2_copy, 0, state.num_attributes);
+	
+	cblas_saxpy(state.num_attributes, -1, raw_i1, 1, i2_copy, 1); 
+
+	float norm_sq = cblas_sdot(state.num_attributes, i2_copy, 1, i2_copy, 1);
+
+	float result = (float)exp(-1 *(double)state.gamma*norm_sq);
+
+	delete [] i2_copy;
 
 	return result;
 }
