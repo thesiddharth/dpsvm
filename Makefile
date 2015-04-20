@@ -49,7 +49,7 @@ NVCCFLAGS=-O3 -m64 -arch compute_20
 LIBS += GL glut cudart
 LDFLAGS=-L/usr/local/cuda/lib64/ -lcudart
 BLAS_INCFLAGS=-I/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/CBLAS/include/
-BLAS_LDFLAGS=-L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/BLAS -L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/CBLAS/lib -lcblas -lblas -lm -L/usr/lib64 -l:libgfortran.so.3.0.0
+BLAS_LDFLAGS=-L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/BLAS -L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/CBLAS/lib -lcblas -lblas -lm -L/usr/lib64 -l:libgfortran.so.3.0.0 -lcublas
 MPI_LDFLAGS=-lpthread -lmpi -lmpi_cxx
 endif
 
@@ -58,7 +58,7 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/main.o $(OBJDIR)/svmTrain.o 
+OBJS=$(OBJDIR)/svmTrain.o $(OBJDIR)/parse.o 
 SAMPLE_OBJS=$(OBJDIR)/mpi_sample.o
 SEQ_OBJS=$(OBJDIR)/seq.o
 
@@ -79,7 +79,7 @@ run_sample: mpi_sample
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) -np 6 mpi_sample -s 10000000 -d norm -p 5
 
 run_seq: seq
-	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./seq --num-att 785 --num-ex 60000 -c 1 -g 0.1 -e 0.01 -f ./data/train.csv
+	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./seq --num-att 123 --num-ex 1605 -c 100 -g 0.5 -e 0.01 -f ../data/adult/0/train_conv.csv
 
 mpi_sample: dirs $(SAMPLE_OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SAMPLE_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
@@ -88,13 +88,13 @@ seq: dirs $(SEQ_OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SEQ_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
 
 $(EXECUTABLE): dirs $(OBJS)
-		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
+		$(NVCC) $(NVCCFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
 
 $(OBJDIR)/%.o: %.c
 		$(CXX) $< $(CXXFLAGS) -c -o $@
 
 $(OBJDIR)/%.o: %.cpp
-		$(CXX) $< $(CXXFLAGS) -c -o $@ $(BLAS_INCFLAGS)
+		$(CXX) $< $(CXXFLAGS) -c -o $@ $(BLAS_INCFLAGS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
 
 $(OBJDIR)/%.o: %.cu
-		$(NVCC) $< $(NVCCFLAGS) -c -o $@
+		$(NVCC) $< $(NVCCFLAGS) -c -o $@ $(BLAS_INCFLAGS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)

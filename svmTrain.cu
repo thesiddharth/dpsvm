@@ -1,19 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "svmTrain.h"
+#include "parse.hpp"
 #include <iostream>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 #include <cuda.h>
 #include <cblas.h>
 #include <vector>
-#include <iostream>
-#include <fstream>
-#include <sstream>
 #include <string.h>
 #include <getopt.h>
 #include <math.h>
-#include <string>
+#include <vector>
 
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
@@ -35,7 +33,6 @@ void SvmTrain::setup() {
 }
 
 float clip_value(float num, float low, float high);
-void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y);
 float rbf_kernel(thrust::host_vector<float> x, int i1, int i2);
 void get_x(float* x, float* x_copy, int idx, int num_attributes);
 
@@ -319,12 +316,17 @@ int main(int argc, char *argv[]) {
 	parse_arguments(argc, argv);
 
 	//input data attributes and labels
-	thrust::host_vector<float> x (state.num_train_data * state.num_attributes);
-	thrust::host_vector<int> y (state.num_train_data);
 	
-	//read data from input file
-	populate_data(x, y);
+	std::vector<float> raw_x;// = new float[state.num_train_data * state.num_attributes];
+	std::vector<int> raw_y;// = new int[state.num_train_data];
 
+	//read data from input file
+
+	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name) ;
+
+	thrust::host_vector<float> x (raw_x);
+	thrust::host_vector<int> y (raw_y);
+	
 	cout << "Populated Data from input file\n";
 
 	//Copy x and y to device
@@ -359,8 +361,8 @@ int main(int argc, char *argv[]) {
 	do {
 
 		//Set up I_set1 and I_set2
-		thrust::device_vector<int> g_I_set1(state.num_train_data, 1000000000);
-		thrust::device_vector<int> g_I_set2(state.num_train_data, -1000000000);
+		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
+		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
 		
 		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
     	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
@@ -451,40 +453,6 @@ float clip_value(float num, float low, float high) {
 }
 
 
-void populate_data(thrust::host_vector<float> x, thrust::host_vector<int> y)
-{
-    ifstream file(state.input_file_name);
-
-    if(!file.is_open())
-    {
-        cout << "Couldn't open file";
-        return;
-    }
-    //std::vector<std::string>   result;
-    string line;
-    int curr_example_num = 0;
-
-    while (curr_example_num < state.num_train_data)
-    {
-        getline(file,line);
-
-        stringstream lineStream(line);
-        string cell;
-
-        getline(lineStream,cell,',');
-
-        y[curr_example_num] = stoi(cell);
-
-        int curr_attr_num = 0;
-
-        while(getline(lineStream,cell,','))
-        {
-            x[(curr_example_num * state.num_attributes) + curr_attr_num++] = stof(cell);
-        }
-
-        ++curr_example_num;
-    }
-}
 
 
 void get_x(float* x, float* x_copy, int idx, int num_attributes) {
