@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Svm-legion : A distributed implementation of Support Vector Machines using OpenMPI and CUDA">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Project Checkpoint</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/thesiddharth/svm-legion">View on GitHub</a>
+
+          <h1 id="project_title">DPSVM</h1>
+          <h2 id="project_tagline">Project Checkpoint</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/thesiddharth/svm-legion/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/thesiddharth/svm-legion/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h3>
+<a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Progress review</h3>
+
+<p dir="ltr">
+	We finished the additional literature review for the project in the first week after submitting the proposal, which also included reviewing the Legion boot camp in the first few days. After realizing that Legion would be an overkill for the task, owing to it’s large boilerplate code and the limited use of heterogeneity in our project, we revised our platform choice and chose <strong>OpenMPI</strong> and <strong>CUDA</strong> for the project. We also finalized the algorithm we’d be using for SVM training.
+</p>
+
+<p dir="ltr">
+	In the second week, we worked on the sequential implementation of the SVM training phase, and fixed the errors in our earlier algorithm while comparing it to LibSVM for the no. of support vectors. The sequential implementation is currently slower than the LibSVM implementation, but achieves the same accuracy. In the last few days, we worked on the Parallel version using CUDA with the Thrust library and CuBLAS. We have finished writing the code for training, but have to debug the implementation to complete the training phase.
+</p>
+
+<h3>
+<a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
+
+<p dir="ltr">
+	We are on track to deliver a parallel implementation of the SVM training phase based on CUDA and OpenMPI. We have already written the CUDA code (as stated in the progress review), and need to incorporate OpenMPI calls to parallelize over multiple GPUs across nodes. We need to figure out the procedure to access different nodes through OpenMPI on the latedays cluster, without authenticating multiple times for every iteration.
+</p>
+
+<p dir="ltr">
+	A “nice to have” goal would be a multi-class classification (as an extension to the 2 class classification problem) SVM before the Parallelism competition. We’d also like to extend our benchmarking to include new systems such as Spark LibLinear, if we manage to complete the previous stretch goal.
+</p>
+
+<h3>
+<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Exhibits for the Parallelism Competition</h3>
+
+<p dir="ltr">
+	We plan to include a graph in our presentation which compares the runtimes of LibSVM, our sequential implementation and our parallel implementation for popular data-sets such as MNIST, Adult dataset and Covertype.
+</p>
+
+<p dir="ltr">
+	We could possibly have a small demo on classifying one of the smaller datasets in the presentation (dependent on the time constraint), as the runtimes for these datasets would be under 30 seconds.
+</p>
+
+
+<h3>
+<a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Issues</h3>
+
+<p dir="ltr">
+	We could not get OpenMPI working on the GHC machines across multiple machines, without authenticating multiple times. The GHC machines could transfer data using the MPI calls for a certain subsection of machines without multiple authentications (after adding the public keys of machines in the authorized_keys file of each machine we intended to use), but this does not satisfy our requirements as we seek to use certain GPUs which are spread across multiple such subsets of machines.
+</p>
+
+<p dir="ltr">
+	We are yet to work our way around using the latedays cluster for this purpose, and may have to use Amazon EC2 instances if we aren’t able to access nodes without multiple authentication.
+</p>    
+
+<h3>
+<a id="schedule" class="anchor" href="#schedule" aria-hidden="true"><span class="octicon octicon-link"></span></a>Schedule</h3>
+
+<div dir="ltr">
+	<table class="my_table">
+		<colgroup>
+			<col width="92"/>
+			<col width="532"/>
+		</colgroup>
+		<tbody>
+			<tr>
+				<td>
+					<p dir="ltr">
+						Dates
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Planned Goals
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/3 - 4/10
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						<strong>Completed</strong> (Environment setup, boilerplate code and literature review)
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/11 - 4/16
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						<strong> Completed </strong>(Sequential implementation and CUDA code), debug pending
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/17 - 4/24
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Implemented the sequential classifier, have to debug CUDA code and optimize it (4/21 - 4/24).
+					</p>
+				</td>
+			</tr>
+
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/25 - 5/4
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						We have 3 final exams this week, so won’t be able to make much progress (Siddharth will work on adding OpenMPI and optimizing the parallel implementation from 5/1 - 5/4)
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						5/5 - 5/8
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Benchmark against LibSVM and our sequential implementation, stretch goals
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						5/9 - 5/10
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Write up and presentation
+					</p>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+</body>
+</html>
