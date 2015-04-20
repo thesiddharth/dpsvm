@@ -72,8 +72,11 @@ dirs:
 clean:
 		rm -rf $(OBJDIR) *~ $(EXECUTABLE) mpi_sample seq  $(LOGS)
 
-run: $(EXECUTABLE)
+run_old:
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) --hostfile host_file -np 6 $(EXECUTABLE) -s 10000000 -d norm -p 5
+
+run: $(EXECUTABLE)
+	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) ./$(EXECUTABLE) --num-att 123 --num-ex 1605 -c 100 -g 0.5 -e 0.01  -f ../data/adult/0/train_conv.csv -m model.txt
 
 run_sample: mpi_sample
 	LD_LIBRARY_PATH=./lib:$(LD_LIBRARY_PATH) $(MPIRUN) -np 6 mpi_sample -s 10000000 -d norm -p 5

@@ -43,8 +43,8 @@ typedef struct {
 	float c;
 	float gamma;
 	float epsilon;
-	char input_file_name[30];
-	char model_file_name[30];
+	char input_file_name[60];
+	char model_file_name[60];
 	int max_iter;
 
 } state_model;
@@ -312,22 +312,43 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 
 int main(int argc, char *argv[]) {
 
+
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+
+    printf("---------------------------------------------------------\n");
+    printf("Initializing CUDA for CudaRenderer\n");
+    printf("Found %d CUDA devices\n", deviceCount);
+
+    for (int i=0; i<deviceCount; i++) {
+        cudaDeviceProp deviceProps;
+        cudaGetDeviceProperties(&deviceProps, i);
+        printf("Device %d: %s\n", i, deviceProps.name);
+        printf("   SMs:        %d\n", deviceProps.multiProcessorCount);
+        printf("   Global mem: %.0f MB\n", static_cast<float>(deviceProps.totalGlobalMem) / (1024 * 1024));
+        printf("   CUDA Cap:   %d.%d\n", deviceProps.major, deviceProps.minor);
+    }
+    printf("---------------------------------------------------------\n");
+
+
 	//Obtain the command line arguments
 	parse_arguments(argc, argv);
 
 	//input data attributes and labels
 	
-	std::vector<float> raw_x;// = new float[state.num_train_data * state.num_attributes];
-	std::vector<int> raw_y;// = new int[state.num_train_data];
+	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);// = new float[state.num_train_data * state.num_attributes];
+	std::vector<int> raw_y(state.num_train_data,0);// = new int[state.num_train_data];
 
 	//read data from input file
 
+	cout << state.num_train_data << " " << state.num_attributes << " " << state.input_file_name << "\n";
+
 	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name) ;
 
+	cout << "Populated Data from input file\n";
+	
 	thrust::host_vector<float> x (raw_x);
 	thrust::host_vector<int> y (raw_y);
-	
-	cout << "Populated Data from input file\n";
 
 	//Copy x and y to device
 	thrust::device_vector<float> g_x (x.begin(), x.end());

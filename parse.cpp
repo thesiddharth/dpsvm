@@ -7,14 +7,14 @@
 
 using namespace std;
 
-void populate_data(vector<float> x, vector<int> y, int num_train_data, int num_attributes,char input_file_name[30] ) {
+void populate_data(vector<float> x, vector<int> y, int num_train_data, int num_attributes,char input_file_name[60] ) {
 	
     ifstream file(input_file_name);
 
     if(!file.is_open())
     {
-        cout << "Couldn't open file";
-        return;
+        cout << "Couldn't open file\n";
+        exit(-1);
     }
     //std::vector<std::string>   result;
     string line;
