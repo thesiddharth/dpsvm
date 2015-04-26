@@ -183,6 +183,7 @@ struct arbitrary_functor
 		
 			if(thrust::get<1>(t) == 1) {
 			
+				
 				thrust::get<3>(t) = thrust::get<2>(t);
 				
 			}
@@ -288,11 +289,11 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 
 	status = cublasSetStream(handle, stream1);
 
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_train_data, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
 
 	cublasSetStream(handle, stream2);
 	
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_train_data, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
 
 	float x_hi_sq = g_x_sq[I_hi];
 	float x_lo_sq = g_x_sq[I_lo];
@@ -378,7 +379,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	thrust::device_vector<float>::iterator iter;
-	
+	//float* iter;	
+
 	do {
 
 		//Set up I_set1 and I_set2
@@ -399,6 +401,8 @@ int main(int argc, char *argv[]) {
 
 		int I_hi = iter - g_I_set1.begin();
 		b_hi = *iter;
+
+		cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
 
 		int y_lo = y[I_lo];
 		int y_hi = y[I_hi];
