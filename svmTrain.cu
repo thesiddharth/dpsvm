@@ -361,7 +361,7 @@ int main(int argc, char *argv[]) {
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 
 	//Initialize alpha on device
-	thrust::device_vector<int> g_alpha(state.num_train_data, 0);
+	thrust::device_vector<float> g_alpha(state.num_train_data, 0.f);
 	
 	//b (intercept), checks optimality condition for stopping
 	float b_lo, b_hi;
@@ -418,12 +418,12 @@ int main(int argc, char *argv[]) {
 		float alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
 		float alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
 
-		cout << "alpha_lo_new: " << alpha_lo_new << '\n';
-		cout << "alpha_hi_new: " << alpha_hi_new << '\n';
-
 		//clip new alpha values between 0 and C
 		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
 		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
+
+		cout << "alpha_lo_new: " << alpha_lo_new << '\n';
+		cout << "alpha_hi_new: " << alpha_hi_new << '\n';
 		
 		//store new alpha_1 and alpha_2 values
 		g_alpha[I_lo] = alpha_lo_new;
@@ -448,6 +448,11 @@ int main(int argc, char *argv[]) {
 	//obtain final b intercept
 	float b = (b_lo + b_hi)/2;
 	cout << "b: " << b << "\n";
+
+	cout << "******g_alpha******\n";
+	for(int i=0; i<g_alpha.size(); i++) {
+		cout << g_alpha[i] << "\n";
+	}
 
 	//obtain training accuracy
 	//float train_accuracy = get_train_accuracy(x, y, alpha, b);
