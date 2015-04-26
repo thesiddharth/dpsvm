@@ -257,7 +257,7 @@ struct update_functor
 	}
 };
 
-int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
+int update_f(thrust::device_vector<float> &g_f, thrust::device_vector<float> g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
 
 	cublasStatus_t status;
 	cudaError_t cudaStat;
@@ -271,6 +271,7 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 		return EXIT_FAILURE; 
 	}
 
+	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 	thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 	thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
 
@@ -289,11 +290,11 @@ int update_f(thrust::device_vector<float> g_f, thrust::device_vector<float> g_x,
 
 	status = cublasSetStream(handle, stream1);
 
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_train_data, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+	status = cublasSgemv( handle, CUBLAS_OP_N, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
 
 	cublasSetStream(handle, stream2);
 	
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_train_data, state.num_attributes, &alpha, raw_g_x, state.num_train_data, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
 
 	float x_hi_sq = g_x_sq[I_hi];
 	float x_lo_sq = g_x_sq[I_lo];
@@ -336,16 +337,13 @@ int main(int argc, char *argv[]) {
 	parse_arguments(argc, argv);
 
 	//input data attributes and labels
-	
 	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);// = new float[state.num_train_data * state.num_attributes];
 	std::vector<int> raw_y(state.num_train_data,0);// = new int[state.num_train_data];
 
 	//read data from input file
-
 	cout << state.num_train_data << " " << state.num_attributes << " " << state.input_file_name << "\n";
 
-	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name) ;
-
+	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
 	cout << "Populated Data from input file\n";
 	
 	thrust::host_vector<float> x (raw_x);
@@ -360,7 +358,7 @@ int main(int argc, char *argv[]) {
 	
 	// Initialize f on device
 	thrust::device_vector<float> g_f(state.num_train_data);
-	thrust::transform(g_f.begin(), g_f.end(), g_y.begin(), thrust::negate<float>());
+	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 
 	//Initialize alpha on device
 	thrust::device_vector<int> g_alpha(state.num_train_data, 0);
@@ -371,7 +369,7 @@ int main(int argc, char *argv[]) {
 	//check iteration number for stopping condition
 	int num_iter = 0;
  
-	thrust::host_vector<float> g_x_sq (state.num_train_data);	
+	thrust::host_vector<float> g_x_sq (state.num_train_data);
 
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
@@ -379,8 +377,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	thrust::device_vector<float>::iterator iter;
-	//float* iter;	
-
+	//float* iter;
 	do {
 
 		//Set up I_set1 and I_set2
@@ -403,11 +400,14 @@ int main(int argc, char *argv[]) {
 		b_hi = *iter;
 
 		cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
+		cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
 
 		int y_lo = y[I_lo];
 		int y_hi = y[I_hi];
 
 		float eta = rbf_kernel(x,I_hi,I_hi) + rbf_kernel(x,I_lo,I_lo) - (2*rbf_kernel(x,I_lo,I_hi)) ;
+
+		cout << "eta: " << eta << '\n';
 
 		//obtain alpha_low and alpha_hi (old values)
 		float alpha_lo_old = g_alpha[I_lo];
@@ -417,6 +417,9 @@ int main(int argc, char *argv[]) {
 		float s = y_lo*y_hi;
 		float alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
 		float alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
+
+		cout << "alpha_lo_new: " << alpha_lo_new << '\n';
+		cout << "alpha_hi_new: " << alpha_hi_new << '\n';
 
 		//clip new alpha values between 0 and C
 		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
