@@ -249,7 +249,9 @@ struct update_functor
     void operator()(Tuple t)
     {
 		float rbf_hi = expf(-1 * gamma * (thrust::get<2>(t) + x_hi_sq - (2*thrust::get<0>(t)) ));
+		//printf("%f\t%f\n" , -1 * gamma * (thrust::get<2>(t) + x_hi_sq - (2*thrust::get<0>(t)) ) , rbf_hi);
 		float rbf_lo = expf(-1 * gamma * (thrust::get<2>(t) + x_lo_sq - (2*thrust::get<1>(t)) ));
+		//printf("%f\t%f\n" , -1 * gamma * (thrust::get<2>(t) + x_lo_sq - (2*thrust::get<1>(t)) ) , rbf_lo);
 
 		float delta = (((alpha_hi_new-alpha_hi_old)*y_hi*rbf_hi) + ((alpha_lo_new - alpha_lo_old)*y_lo*rbf_lo));
 	
@@ -290,7 +292,7 @@ int update_f(thrust::device_vector<float> &g_f, thrust::device_vector<float> g_x
 
 	status = cublasSetStream(handle, stream1);
 
-	status = cublasSgemv( handle, CUBLAS_OP_N, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
 
 	cublasSetStream(handle, stream2);
 	
@@ -375,24 +377,36 @@ int main(int argc, char *argv[]) {
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
+
+	/*cout << "***g_x_sq***\n";
+	for(int i=0; i<state.num_train_data; i++) {
+		cout << g_x_sq[i] << '\n';
+	}*/
 	
 	thrust::device_vector<float>::iterator iter;
 	//float* iter;
 	do {
 
 		//Set up I_set1 and I_set2
-		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
-		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
+		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000.f);
+		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000.f);
 		
 		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
     	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
         	             arbitrary_functor(state.c));
+
+		/*cout << "******g_I_set2******\n";
+		for(int i=0; i<g_I_set2.size(); i++) {
+			cout << g_I_set2[i] << "\n";
+		}*/
 
 		//get b_hi and b_low
 		iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());
 
 		int I_lo = iter - g_I_set2.begin();
 		b_lo = *iter;
+
+		cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
 
 		iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
@@ -448,11 +462,6 @@ int main(int argc, char *argv[]) {
 	//obtain final b intercept
 	float b = (b_lo + b_hi)/2;
 	cout << "b: " << b << "\n";
-
-	cout << "******g_alpha******\n";
-	for(int i=0; i<g_alpha.size(); i++) {
-		cout << g_alpha[i] << "\n";
-	}
 
 	//obtain training accuracy
 	//float train_accuracy = get_train_accuracy(x, y, alpha, b);
