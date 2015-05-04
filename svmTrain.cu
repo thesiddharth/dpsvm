@@ -33,8 +33,9 @@ void SvmTrain::setup() {
 }
 
 float clip_value(float num, float low, float high);
-float rbf_kernel(thrust::host_vector<float> x, int i1, int i2);
+float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2);
 void get_x(float* x, float* x_copy, int idx, int num_attributes);
+float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int> &y, thrust::device_vector<float> &g_alpha, float b);
 
 typedef struct {
 
@@ -234,7 +235,7 @@ struct update_functor
 
 	gamma(_gamma), 
 	alpha_lo_old(_alpha_lo_old), 
-	alpha_hi_old(_alpha_hi_new), 
+	alpha_hi_old(_alpha_hi_old), 
 	alpha_lo_new(_alpha_lo_new), 
 	alpha_hi_new(_alpha_hi_new), 
 	y_lo(_y_lo), 
@@ -363,7 +364,7 @@ int main(int argc, char *argv[]) {
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 
 	//Initialize alpha on device
-	thrust::device_vector<float> g_alpha(state.num_train_data, 0.f);
+	thrust::device_vector<float> g_alpha(state.num_train_data, 0);
 	
 	//b (intercept), checks optimality condition for stopping
 	float b_lo, b_hi;
@@ -388,8 +389,8 @@ int main(int argc, char *argv[]) {
 	do {
 
 		//Set up I_set1 and I_set2
-		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000.f);
-		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000.f);
+		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
+		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
 		
 		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
     	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
@@ -406,22 +407,22 @@ int main(int argc, char *argv[]) {
 		int I_lo = iter - g_I_set2.begin();
 		b_lo = *iter;
 
-		cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
+		//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
 
 		iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
 		int I_hi = iter - g_I_set1.begin();
 		b_hi = *iter;
 
-		cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
-		cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
+	//	cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
+	//	cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
 
 		int y_lo = y[I_lo];
 		int y_hi = y[I_hi];
 
 		float eta = rbf_kernel(x,I_hi,I_hi) + rbf_kernel(x,I_lo,I_lo) - (2*rbf_kernel(x,I_lo,I_hi)) ;
 
-		cout << "eta: " << eta << '\n';
+	//	cout << "eta: " << eta << '\n';
 
 		//obtain alpha_low and alpha_hi (old values)
 		float alpha_lo_old = g_alpha[I_lo];
@@ -436,8 +437,8 @@ int main(int argc, char *argv[]) {
 		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
 		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
 
-		cout << "alpha_lo_new: " << alpha_lo_new << '\n';
-		cout << "alpha_hi_new: " << alpha_hi_new << '\n';
+	//	cout << "alpha_lo_new: " << alpha_lo_new << '\n';
+	//	cout << "alpha_hi_new: " << alpha_hi_new << '\n';
 		
 		//store new alpha_1 and alpha_2 values
 		g_alpha[I_lo] = alpha_lo_new;
@@ -464,8 +465,8 @@ int main(int argc, char *argv[]) {
 	cout << "b: " << b << "\n";
 
 	//obtain training accuracy
-	//float train_accuracy = get_train_accuracy(x, y, alpha, b);
-	//cout << "Training accuracy: " << train_accuracy << "\n";
+	float train_accuracy = get_train_accuracy(x, y, g_alpha, b);
+	cout << "Training accuracy: " << train_accuracy << "\n";
 
 	//write model to file
 	//write_out_model(x, y, alpha, b);
@@ -483,6 +484,37 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int> &y, thrust::device_vector<float> &g_alpha, float b) {
+	int num_correct = 0;
+
+	thrust::host_vector<float> alpha = g_alpha; 
+	float* raw_alpha = thrust::raw_pointer_cast(&alpha[0]);
+	
+	for(int i=0; i<state.num_train_data; i++) {
+		cout << "Iter: " << i << "\n";
+
+		float dual = 0;
+
+		for(int j=0; j<state.num_train_data; j++) {
+			if(raw_alpha[j] != 0) {
+				dual += y[j]*raw_alpha[j]*rbf_kernel(x,j,i);
+			}
+		}
+
+		//dual += b;
+
+		int result = 1;
+		if(dual < 0) {
+			result = -1;
+		}
+
+		if(result == y[i]) {
+			num_correct++;
+		}
+	}
+
+	return ((float)num_correct/(state.num_train_data));
+}
 
 float clip_value(float num, float low, float high) {
 	if(num < low) {
@@ -509,7 +541,7 @@ void get_x(float* x, float* x_copy, int idx, int num_attributes) {
 }
 
 
-float rbf_kernel(thrust::host_vector<float> x, int i1, int i2){
+float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2){
 	
 	float* i2_copy = new float[state.num_attributes];
 
@@ -519,6 +551,10 @@ float rbf_kernel(thrust::host_vector<float> x, int i1, int i2){
 	get_x(raw_i2, i2_copy, 0, state.num_attributes);
 	
 	cblas_saxpy(state.num_attributes, -1, raw_i1, 1, i2_copy, 1); 
+
+	//float norm = cblas_snrm2(state.num_attributes, i2_copy, 1);
+
+	///float result = (float)exp(-1 *(double)state.gamma*norm*norm);
 
 	float norm_sq = cblas_sdot(state.num_attributes, i2_copy, 1, i2_copy, 1);
 
