@@ -266,8 +266,8 @@ static cublasHandle_t handle;
 static cudaStream_t stream1;
 static cudaStream_t stream2;
 
-static float* raw_g_hi_dotprod; 
-static float* raw_g_lo_dotprod; 
+//static float* raw_g_hi_dotprod; 
+//static float* raw_g_lo_dotprod; 
 
 thrust::device_vector<float>& get_g_hi_dp() {
 
@@ -287,6 +287,24 @@ thrust::device_vector<float>& get_g_lo_dp() {
 
 int prev_hi;
 int prev_lo;
+
+myCache* lineCache;	
+
+thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit) {
+
+	//static thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
+	thrust::device_vector<float>* lookup = lineCache->lookup(I_idx);
+	if(lookup != NULL){
+		cache_hit = true;
+		return *lookup;
+	}
+
+	else {
+		cache_hit = false;
+		return lineCache->get_new_cache_line(I_idx);
+
+	}
+}
 
 //Allocate x_hi, x_lo and an empty vector in device	i
 void init_cuda_handles() {
@@ -311,14 +329,14 @@ void init_cuda_handles() {
 		exit(EXIT_FAILURE); 
 	}
 
-	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
-	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
+//	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
+//	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
 
-	raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
-	raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+//	raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
+//	raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
 
-	prev_hi = -1;
-	prev_lo = -1;
+//	prev_hi = -1;
+//	prev_lo = -1;
 	
 }
 
@@ -335,17 +353,27 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 	
 //	t1 = CycleTimer::currentTicks();
 	
-	//cout << I_hi << "," << I_lo << "\n";
+	cout << I_hi << "," << I_lo << "\n";
 
-	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
-	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
+	bool hi_hit;
+	bool lo_hit;
+
+	thrust::device_vector<float>& g_hi_dotprod  = lookup_cache(I_hi, hi_hit);
+	thrust::device_vector<float>& g_lo_dotprod  = lookup_cache(I_lo, lo_hit);
+	
+	float* raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
+	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+
+	printf("%x, %x\n",raw_g_hi_dotprod, raw_g_lo_dotprod);
 
 	//cout << "UPDATE_F: " << t2-t1 << "\n";
 	//t1 = t2;
 
 	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 
-	if(prev_hi != I_hi) {
+	if(!hi_hit) {
+
+		cout << "HI MISS\n";
 
 		cublasSetStream(handle, stream1);
 
@@ -360,13 +388,35 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 //	t1 = t2;
 	}
 
-	if(prev_lo != I_lo) {
+	cout << "----------------\n";
+
+	for (int i = 0 ; i < state.num_attributes; i++) {
+
+		cout << g_hi_dotprod[i] << ",";
+
+	}
+
+	cout << "\n-------------\n";
+	
+	if(!lo_hit) {
+
+		cout << "LO MISS \n";
 
 		cublasSetStream(handle, stream2);
 	
 		cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
 	
 	}
+
+	cout << "----------------\n";
+
+	for (int i = 0 ; i < state.num_attributes; i++) {
+
+		cout << g_lo_dotprod[i] << ",";
+
+	}
+
+	cout << "\n-------------\n";
 //	t2 = CycleTimer::currentTicks();
 //	cout << "SGEMV 2: " << t2-t1 << "\n";
 //	t1 = t2;
@@ -378,8 +428,8 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.end(), g_lo_dotprod.end(), g_x_sq.end(),g_f.end())),
        	             update_functor(state.gamma, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new, y_lo, y_hi, x_hi_sq, x_lo_sq));
 
-	prev_hi = I_hi;
-	prev_lo = I_lo;
+	//prev_hi = I_hi;
+	//prev_lo = I_lo;
 
 //	t2 = CycleTimer::currentTicks();
 //	cout << "UPDATE_FUNCTOR: " << t2-t1 << "\n";
@@ -496,6 +546,12 @@ int main(int argc, char *argv[]) {
 	init_cuda_handles();
 	t2 = CycleTimer::currentTicks();
 	cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
+	t1 = t2;
+	
+	lineCache = new myCache(10, state.num_attributes);
+
+	t2 = CycleTimer::currentTicks();
+	cout << "INIT CACHE: " << t2-t1 << "\n";
 	t1 = t2;
 
 	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
