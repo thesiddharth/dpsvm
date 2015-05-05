@@ -10,6 +10,7 @@
 #include <math.h>
 #include <getopt.h>
 #include <string>
+#include "CycleTimer.h"
 
 using namespace std;
 
@@ -34,8 +35,8 @@ typedef struct {
 	float c;
 	float gamma;
 	float epsilon;
-	char input_file_name[30];
-	char model_file_name[30];
+	char input_file_name[60];
+	char model_file_name[60];
 	int max_iter;
 
 } state_model;
@@ -172,6 +173,9 @@ int main(int argc, char *argv[]) {
 	populate_data(x, y);
 
 	cout << "Populated Data from input file\n";
+	
+	unsigned long long t2, start;
+	start = CycleTimer::currentSeconds();
 
 	//Initialize starting values
 	float* alpha = new float[state.num_train_data]();
@@ -196,19 +200,39 @@ int main(int argc, char *argv[]) {
 		//get b_hi and b_low
 		int I_hi = get_I_up(f,I);
 		b_hi = f[I_hi];
-
+		
 		int I_low = get_I_low(f,I);
 		b_low = f[I_low];
+		
+		/*if(num_iter == 100) {
+			
+			cout << "-----\n";
+
+			for(vector<int>::iterator it = I[4].begin(); it != I[4].end(); ++it) {
+				
+				 cout << *it << ": " << f[*it] << ",\n";
+
+			}	
+
+			cout << "\n-----\n";
+
+			exit(0);
+		}*/
 
 		int y_low = y[I_low];
 		int y_hi = y[I_hi];
 
+// 	    cout << "I_lo: \t" << I_low << ", I_hi: \t" << I_hi << '\n';
+// 	    cout << "b_lo: \t" << b_low << ", b_hi: \t" << b_hi << '\n';
+		
 		float eta = rbf_kernel(x[I_hi],x[I_hi]) + rbf_kernel(x[I_low],x[I_low]) - (2*rbf_kernel(x[I_low],x[I_hi])) ;
 
 		//obtain alpha_low and alpha_hi (old values)
 		float alpha_low_old = alpha[I_low];
 		float alpha_hi_old = alpha[I_hi];
 
+//        cout << "eta: " << eta << '\n';
+	
 		//update alpha_low and alpha_hi
 		float s = y_low*y_hi;
 		float alpha_low_new = alpha_low_old + (y_low*(b_hi - b_low)/eta);
@@ -218,6 +242,9 @@ int main(int argc, char *argv[]) {
 		alpha_low_new = clip_value(alpha_low_new, 0.0, state.c);
 		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
 		
+//        cout << "alpha_lo_new: " << alpha_low_new << '\n';
+//        cout << "alpha_hi_new: " << alpha_hi_new << '\n';
+	
 		//store new alpha_1 and alpha_2 values
 		alpha[I_low] = alpha_low_new;
 		alpha[I_hi] = alpha_hi_new;
@@ -231,6 +258,9 @@ int main(int argc, char *argv[]) {
 		cout << "Current iteration number: " << num_iter << "\n";
 
 	} while((b_low > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
+	
+	t2 = CycleTimer::currentSeconds();
+	cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
 
 	if(b_low > (b_hi + (2*state.epsilon))) {
 		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
@@ -294,6 +324,8 @@ float get_train_accuracy(float** x, int* y, float* alpha, float b) {
 	int num_correct = 0;
 
 	for(int i=0; i<state.num_train_data; i++) {
+		
+		//cout << "Iter: " << i << "\n";	
 		float dual = 0;
 
 		for(int j=0; j<state.num_train_data; j++) {
@@ -509,6 +541,8 @@ int get_I_low(float* f, vector<int> I[5]) {
 
 	for(vector<int>::iterator it = I[4].begin(); it != I[4].end(); ++it) {
 		if(f[*it] > max) {
+
+//			cout << "\nNew max: " << *it << ": " << f[*it] << "\n";	
 			max = f[*it];
 			I_low = *it;
 		}

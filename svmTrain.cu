@@ -423,12 +423,13 @@ int main(int argc, char *argv[]) {
 	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
 	cout << "Populated Data from input file\n";
 	
+	unsigned long long t1, t2, start;
+	t1 = CycleTimer::currentTicks();
+	start = CycleTimer::currentSeconds();
+	
 	thrust::host_vector<float> x (raw_x);
 	thrust::host_vector<int> y (raw_y);
 
-	unsigned long long t1, t2;
-	t1 = CycleTimer::currentTicks();
-	
 
 	//cout << "PRE COPY: 0\n";
 
@@ -439,11 +440,11 @@ int main(int argc, char *argv[]) {
 	thrust::device_vector<float> g_x_hi(state.num_attributes);
 	thrust::device_vector<float> g_x_lo(state.num_attributes);
 	
-	t2 = CycleTimer::currentTicks();
+//	t2 = CycleTimer::currentTicks();
 
 	//cout << "COPY: " << t2 - t1 << "\n";
 
-	t1 = t2;
+//	t1 = t2;
 
 	// Initialize f on device
 	thrust::device_vector<float> g_f(state.num_train_data);
@@ -460,9 +461,9 @@ int main(int argc, char *argv[]) {
  
 	thrust::host_vector<float> g_x_sq (state.num_train_data);
 
-	t2 = CycleTimer::currentTicks();
+//	t2 = CycleTimer::currentTicks();
 	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
-	t1 = t2;
+//	t1 = t2;
 
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
@@ -470,7 +471,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	t2 = CycleTimer::currentTicks();
-	cout << "G_X_SQ CALC: " << t2-t1 << "\n";
+	//cout << "G_X_SQ CALC: " << t2-t1 << "\n";
 	t1 = t2;
 	/*cout << "***g_x_sq***\n";
 	for(int i=0; i<state.num_train_data; i++) {
@@ -572,6 +573,9 @@ int main(int argc, char *argv[]) {
 	//	cout << "--------------------------------\n";
 
 	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
+	
+	t2 = CycleTimer::currentSeconds();
+	cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
 
 	if(b_lo > (b_hi + (2*state.epsilon))) {
 		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
