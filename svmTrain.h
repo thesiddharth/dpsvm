@@ -40,13 +40,14 @@ class myCache {
 			int max_size;
 			int size;
 			std::vector< thrust::device_vector<float> > lines;
+			//thrust::device_vector<float> line;
 			std::map<int, int> my_map; 
 			std::list<int> order;
 
-			void dump_map_contents();
-
 	public:
 
+			void dump_map_contents();
+			
 			myCache(int max_size, int line_size);
 
 			//void add(int key, thrust::device_vector<float>& val);
@@ -66,7 +67,17 @@ void myCache::dump_map_contents() {
 
 	for(it = my_map.begin(); it != my_map.end(); ++it) {
 
-		std::cout << it->first << ",";
+		std::cout << it->first << "," << it->second << "::" ;
+
+	}
+	
+	std::cout << "\n";
+	
+	std::list<int>::iterator it2;
+	
+	for(it2 = order.begin(); it2 != order.end(); ++it2) {
+
+		std::cout << *it2 << "::" ;
 
 	}
 
@@ -81,13 +92,12 @@ myCache::myCache(int max_size, int line_size) {
 	this->max_size = max_size;	
 	this->line_size = line_size;
 	this->size = 0;
-	//this->my_map = new std::map<int, thrust::device_vector<float>&>();
-	//this->order = new std::list<int>();
 	lines.resize(max_size);
 
 	for(int i = 0; i < max_size; i++) {
 
 		lines[i] = thrust::device_vector<float>(line_size);
+		//line = thrust::device_vector<float>(line_size);
 
 	}
 
@@ -95,15 +105,18 @@ myCache::myCache(int max_size, int line_size) {
 
 thrust::device_vector<float>* myCache::lookup(int key) {
 
-	std::cout << "Looking up " << key << "\n";
+	//std::cout << "Looking up " << key << "\n";
 
 	std::map<int,int>::iterator it = my_map.find(key);
 
 	if(it != my_map.end()) {
 
-		//dump_map_contents();
+		order.remove(key);
+		order.push_back(key);
 
 		return &lines[it->second];
+
+		//return &line;
 
 	}
 	else {
@@ -112,16 +125,14 @@ thrust::device_vector<float>* myCache::lookup(int key) {
 
 	}
 
-
-
 }
 
 thrust::device_vector<float>& myCache::get_new_cache_line(int key) {
 
-	if(this->size == max_size){
+	if(size == max_size){
 
 		int del_key = order.front();
-		std::map<int,int>::iterator it = this->my_map.find(del_key);
+		std::map<int,int>::iterator it = my_map.find(del_key);
 		int line_number = it->second;
 
 //		thrust::fill(this->lines[line_number].begin(), this->lines[line_number].end(), 0);
@@ -133,14 +144,14 @@ thrust::device_vector<float>& myCache::get_new_cache_line(int key) {
 		order.push_back(key);
 		order.pop_front();	
 
-		std::cout << "Returning new line: " << line_number << "\n";
+		//std::cout << "Returning new line: " << line_number << "\n";
 		return lines[line_number];
 	}
 
 	my_map[key] = size;
 	order.push_back(key);
 		
-	std::cout << "Returning new line: " << size << "\n";
+	//std::cout << "Returning new line: " << size << "\n";
 	return lines[size++];
 	
 }

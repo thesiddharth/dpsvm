@@ -353,18 +353,19 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 	
 //	t1 = CycleTimer::currentTicks();
 	
-	cout << I_hi << "," << I_lo << "\n";
+//	cout << I_hi << "," << I_lo << "\n";
+
+	//lineCache -> dump_map_contents();	
+
 
 	bool hi_hit;
 	bool lo_hit;
 
 	thrust::device_vector<float>& g_hi_dotprod  = lookup_cache(I_hi, hi_hit);
-	thrust::device_vector<float>& g_lo_dotprod  = lookup_cache(I_lo, lo_hit);
 	
 	float* raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
-	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
 
-	printf("%x, %x\n",raw_g_hi_dotprod, raw_g_lo_dotprod);
+	//printf("%x, %x\n",raw_g_hi_dotprod, raw_g_lo_dotprod);
 
 	//cout << "UPDATE_F: " << t2-t1 << "\n";
 	//t1 = t2;
@@ -373,7 +374,7 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 
 	if(!hi_hit) {
 
-		cout << "HI MISS\n";
+		//cout << "HI MISS\n";
 
 		cublasSetStream(handle, stream1);
 
@@ -388,19 +389,21 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 //	t1 = t2;
 	}
 
-	cout << "----------------\n";
+	/*cout << "----------------\n";
 
-	for (int i = 0 ; i < state.num_attributes; i++) {
+	for (int i = 100 ; i < 130; i++) {
 
 		cout << g_hi_dotprod[i] << ",";
 
 	}
 
-	cout << "\n-------------\n";
+	cout << "\n-------------\n";*/
+	thrust::device_vector<float>& g_lo_dotprod  = lookup_cache(I_lo, lo_hit);
+	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
 	
 	if(!lo_hit) {
 
-		cout << "LO MISS \n";
+		//cout << "LO MISS \n";
 
 		cublasSetStream(handle, stream2);
 	
@@ -408,15 +411,24 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 	
 	}
 
-	cout << "----------------\n";
+	/*cout << "----------------\n";
 
-	for (int i = 0 ; i < state.num_attributes; i++) {
+	for (int i = 100 ; i < 130; i++) {
 
 		cout << g_lo_dotprod[i] << ",";
 
 	}
 
-	cout << "\n-------------\n";
+	cout << "\n-------------\n";*/
+
+	//printf("G_X_SQ: %x - %x\n", thrust::raw_pointer_cast(&g_x_sq[0]), thrust::raw_pointer_cast(&g_x_sq[state.num_train_data-1]));
+	//printf("G_F: %x - %x\n", thrust::raw_pointer_cast(&g_f[0]), thrust::raw_pointer_cast(&g_f[state.num_train_data-1]));
+	//printf("G_X_SQ: %x - %x\n", thrust::raw_pointer_cast(&g_x_sq[0]), thrust::raw_pointer_cast(&g_x_sq[state.num_train_data-1]));
+
+
+
+	//printf("%x, %x\n", thrust::raw_pointer_cast(&g_hi_dotprod[state.num_attributes-1]), thrust::raw_pointer_cast(&g_lo_dotprod[state.num_attributes-1]));
+
 //	t2 = CycleTimer::currentTicks();
 //	cout << "SGEMV 2: " << t2-t1 << "\n";
 //	t1 = t2;
@@ -428,6 +440,14 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.end(), g_lo_dotprod.end(), g_x_sq.end(),g_f.end())),
        	             update_functor(state.gamma, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new, y_lo, y_hi, x_hi_sq, x_lo_sq));
 
+	/*cout << "----------------\n";
+
+	for (int i = 100 ; i < 130; i++) {
+		
+		cout << g_f[i] << ",";
+
+	}
+	cout << "\n-------------\n";*/
 	//prev_hi = I_hi;
 	//prev_lo = I_lo;
 
@@ -544,15 +564,15 @@ int main(int argc, char *argv[]) {
 	}*/
 	
 	init_cuda_handles();
-	t2 = CycleTimer::currentTicks();
-	cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
-	t1 = t2;
+	//t2 = CycleTimer::currentTicks();
+	//cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
+	//t1 = t2;
 	
-	lineCache = new myCache(10, state.num_attributes);
+	lineCache = new myCache(10, state.num_train_data);
 
-	t2 = CycleTimer::currentTicks();
-	cout << "INIT CACHE: " << t2-t1 << "\n";
-	t1 = t2;
+	//t2 = CycleTimer::currentTicks();
+	//cout << "INIT CACHE: " << t2-t1 << "\n";
+	//t1 = t2;
 
 	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
 	//float* raw_g_f = thrust::raw_pointer_cast(&g_f[0]);
@@ -561,7 +581,7 @@ int main(int argc, char *argv[]) {
 	//float* iter;
 	do {
 
-		cout << "Current iteration number: " << num_iter << "\n";
+		//cout << "Current iteration number: " << num_iter << "\n";
 		
 		//Set up I_set1 and I_set2
 		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
