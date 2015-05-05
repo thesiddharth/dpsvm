@@ -12,6 +12,7 @@
 #include <getopt.h>
 #include <math.h>
 #include <vector>
+#include "CycleTimer.h"
 
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
@@ -260,44 +261,103 @@ struct update_functor
 	}
 };
 
-int update_f(thrust::device_vector<float> &g_f, thrust::device_vector<float> g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
+
+static cublasHandle_t handle;
+static cudaStream_t stream1;
+static cudaStream_t stream2;
+
+static float* raw_g_hi_dotprod; 
+static float* raw_g_lo_dotprod; 
+
+thrust::device_vector<float>& get_g_hi_dp() {
+
+	static thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
+	return g_hi_dotprod;
+}
+
+
+thrust::device_vector<float>& get_g_lo_dp() {
+
+	static thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
+	return g_lo_dotprod;
+
+}
+
+//static thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
+
+
+
+//Allocate x_hi, x_lo and an empty vector in device	i
+void init_cuda_handles() {
 
 	cublasStatus_t status;
 	cudaError_t cudaStat;
-	cublasHandle_t handle;
 	
 	status = cublasCreate(&handle);
 	
 	if (status != CUBLAS_STATUS_SUCCESS) { 
 
 		cout << "CUBLAS initialization failed\n"; 
-		return EXIT_FAILURE; 
+		exit(EXIT_FAILURE); 
 	}
-
-	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
-	thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
-	thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
-
-	cudaStream_t stream1;
-	cudaStream_t stream2;
 
 	cudaStat = cudaStreamCreate(&stream1);
 	cudaStat = cudaStreamCreate(&stream2);
 
-	//Allocate x_hi, x_lo and an empty vector in device	i
+	if (cudaStat == cudaErrorInvalidValue) { 
 
-	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
-	float* raw_g_f = thrust::raw_pointer_cast(&g_f[0]);
-	float* raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
-	float* raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+		cout << "CUDA stream initialization failed\n"; 
+		exit(EXIT_FAILURE); 
+	}
 
-	status = cublasSetStream(handle, stream1);
+	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
+	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
 
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+	raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
+	raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+	
+}
+
+void destroy_cuda_handles() {
+
+	cublasDestroy(handle);
+
+}
+
+inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
+
+//	unsigned long long t1,t2;
+	
+//	t1 = CycleTimer::currentTicks();
+	
+	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
+	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
+	//cout << "UPDATE_F: " << t2-t1 << "\n";
+	//t1 = t2;
+	thrust::fill(g_hi_dotprod.begin(),g_hi_dotprod.end(),0);
+	thrust::fill(g_lo_dotprod.begin(),g_lo_dotprod.end(),0);
+
+	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
+
+	cublasSetStream(handle, stream1);
+
+//	t2 = CycleTimer::currentTicks();
+//	cout << "UPDATE_F, INIT: " << t2-t1 << "\n";
+//	t1 = t2;
+	
+	cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+	
+//	t2 = CycleTimer::currentTicks();
+//	cout << "SGEMV 1: " << t2-t1 << "\n";
+//	t1 = t2;
 
 	cublasSetStream(handle, stream2);
 	
-	status = cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+	cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+	
+//	t2 = CycleTimer::currentTicks();
+//	cout << "SGEMV 2: " << t2-t1 << "\n";
+//	t1 = t2;
 
 	float x_hi_sq = g_x_sq[I_hi];
 	float x_lo_sq = g_x_sq[I_lo];
@@ -306,13 +366,27 @@ int update_f(thrust::device_vector<float> &g_f, thrust::device_vector<float> g_x
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.end(), g_lo_dotprod.end(), g_x_sq.end(),g_f.end())),
        	             update_functor(state.gamma, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new, y_lo, y_hi, x_hi_sq, x_lo_sq));
 
+//	t2 = CycleTimer::currentTicks();
+//	cout << "UPDATE_FUNCTOR: " << t2-t1 << "\n";
+//	t1 = t2;
 
 /////////////////////////////////////////////////////////
 
-	cublasDestroy( handle );
 
+//	t2 = CycleTimer::currentTicks();
+//	cout << "Destroy: " << t2-t1 << "\n";
+//	t1 = t2;
 	return 0;
 }
+
+struct compare_mine
+{
+  __host__ __device__
+  bool operator()(float lhs, float rhs)
+  {
+    return (lhs < rhs);
+  }
+};
 
 
 int main(int argc, char *argv[]) {
@@ -352,6 +426,12 @@ int main(int argc, char *argv[]) {
 	thrust::host_vector<float> x (raw_x);
 	thrust::host_vector<int> y (raw_y);
 
+	unsigned long long t1, t2;
+	t1 = CycleTimer::currentTicks();
+	
+
+	//cout << "PRE COPY: 0\n";
+
 	//Copy x and y to device
 	thrust::device_vector<float> g_x (x.begin(), x.end());
 	thrust::device_vector<int> g_y(y.begin(), y.end());
@@ -359,6 +439,12 @@ int main(int argc, char *argv[]) {
 	thrust::device_vector<float> g_x_hi(state.num_attributes);
 	thrust::device_vector<float> g_x_lo(state.num_attributes);
 	
+	t2 = CycleTimer::currentTicks();
+
+	//cout << "COPY: " << t2 - t1 << "\n";
+
+	t1 = t2;
+
 	// Initialize f on device
 	thrust::device_vector<float> g_f(state.num_train_data);
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
@@ -374,20 +460,37 @@ int main(int argc, char *argv[]) {
  
 	thrust::host_vector<float> g_x_sq (state.num_train_data);
 
+	t2 = CycleTimer::currentTicks();
+	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
+	t1 = t2;
+
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
 
+	t2 = CycleTimer::currentTicks();
+	cout << "G_X_SQ CALC: " << t2-t1 << "\n";
+	t1 = t2;
 	/*cout << "***g_x_sq***\n";
 	for(int i=0; i<state.num_train_data; i++) {
 		cout << g_x_sq[i] << '\n';
 	}*/
 	
+	init_cuda_handles();
+	t2 = CycleTimer::currentTicks();
+	cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
+	t1 = t2;
+
+	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
+	//float* raw_g_f = thrust::raw_pointer_cast(&g_f[0]);
+
 	thrust::device_vector<float>::iterator iter;
 	//float* iter;
 	do {
 
+		cout << "Current iteration number: " << num_iter << "\n";
+		
 		//Set up I_set1 and I_set2
 		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
 		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
@@ -395,14 +498,17 @@ int main(int argc, char *argv[]) {
 		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
     	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
         	             arbitrary_functor(state.c));
-
+	
+	//	t2 = CycleTimer::currentTicks();
+	//	cout << "I_SET CALC: " << t2 - t1 << "\n";
+	//	t1 = t2;
 		/*cout << "******g_I_set2******\n";
 		for(int i=0; i<g_I_set2.size(); i++) {
 			cout << g_I_set2[i] << "\n";
 		}*/
 
 		//get b_hi and b_low
-		iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());
+		iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
 
 		int I_lo = iter - g_I_set2.begin();
 		b_lo = *iter;
@@ -414,15 +520,21 @@ int main(int argc, char *argv[]) {
 		int I_hi = iter - g_I_set1.begin();
 		b_hi = *iter;
 
-	//	cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
-	//	cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
+		//cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
+		//cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
 
 		int y_lo = y[I_lo];
 		int y_hi = y[I_hi];
-
+		
+	//	t2 = CycleTimer::currentTicks();
+	//	cout << "MAX_MIN CALC: " << t2 - t1 << "\n";
+	//	t1 = t2;
 		float eta = rbf_kernel(x,I_hi,I_hi) + rbf_kernel(x,I_lo,I_lo) - (2*rbf_kernel(x,I_lo,I_hi)) ;
-
-	//	cout << "eta: " << eta << '\n';
+		
+	//	t2 = CycleTimer::currentTicks();
+	//	cout << "ETA CALC: " << t2 - t1 << "\n";
+	//	t1 = t2;
+		//cout << "eta: " << eta << '\n';
 
 		//obtain alpha_low and alpha_hi (old values)
 		float alpha_lo_old = g_alpha[I_lo];
@@ -437,20 +549,27 @@ int main(int argc, char *argv[]) {
 		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
 		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
 
-	//	cout << "alpha_lo_new: " << alpha_lo_new << '\n';
-	//	cout << "alpha_hi_new: " << alpha_hi_new << '\n';
+		//cout << "alpha_lo_new: " << alpha_lo_new << '\n';
+		//cout << "alpha_hi_new: " << alpha_hi_new << '\n';
 		
 		//store new alpha_1 and alpha_2 values
 		g_alpha[I_lo] = alpha_lo_new;
 		g_alpha[I_hi] = alpha_hi_new;
 
+	//	t2 = CycleTimer::currentTicks();
+	//	cout << "ALPHA UPDATE: " << t2-t1 << "\n";
+	//	t1 = t2;
 		//update f values
-		update_f(g_f, g_x, g_x_sq, I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
+		update_f(g_f, raw_g_x, g_x_sq, I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
+
+	//	t2 = CycleTimer::currentTicks();
+	//	cout << "UPDATE_F: " << t2-t1 << "\n";
+	//	t1 = t2;
 
 		//Increment number of iterations to reach stopping condition
 		num_iter++;
 
-		cout << "Current iteration number: " << num_iter << "\n";
+	//	cout << "--------------------------------\n";
 
 	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 
@@ -459,6 +578,8 @@ int main(int argc, char *argv[]) {
 	} else {
 		cout << "Converged at iteration number: " << num_iter << "\n";
 	}
+
+	destroy_cuda_handles();
 
 	//obtain final b intercept
 	float b = (b_lo + b_hi)/2;
@@ -491,7 +612,7 @@ float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int>
 	float* raw_alpha = thrust::raw_pointer_cast(&alpha[0]);
 	
 	for(int i=0; i<state.num_train_data; i++) {
-		cout << "Iter: " << i << "\n";
+		//cout << "Iter: " << i << "\n";
 
 		float dual = 0;
 
@@ -501,7 +622,7 @@ float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int>
 			}
 		}
 
-		//dual += b;
+		dual += b;
 
 		int result = 1;
 		if(dual < 0) {
@@ -554,11 +675,11 @@ float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2){
 
 	//float norm = cblas_snrm2(state.num_attributes, i2_copy, 1);
 
-	///float result = (float)exp(-1 *(double)state.gamma*norm*norm);
+	///float result = (float)exp(-1 *(float)state.gamma*norm*norm);
 
 	float norm_sq = cblas_sdot(state.num_attributes, i2_copy, 1, i2_copy, 1);
 
-	float result = (float)exp(-1 *(double)state.gamma*norm_sq);
+	float result = (float)exp(-1 *(float)state.gamma*norm_sq);
 
 	delete [] i2_copy;
 
