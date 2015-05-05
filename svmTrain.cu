@@ -285,7 +285,8 @@ thrust::device_vector<float>& get_g_lo_dp() {
 
 //static thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
 
-
+int prev_hi;
+int prev_lo;
 
 //Allocate x_hi, x_lo and an empty vector in device	i
 void init_cuda_handles() {
@@ -315,6 +316,9 @@ void init_cuda_handles() {
 
 	raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
 	raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
+
+	prev_hi = -1;
+	prev_lo = -1;
 	
 }
 
@@ -324,37 +328,45 @@ void destroy_cuda_handles() {
 
 }
 
+
 inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
 
 //	unsigned long long t1,t2;
 	
 //	t1 = CycleTimer::currentTicks();
 	
+	//cout << I_hi << "," << I_lo << "\n";
+
 	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
 	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
+
 	//cout << "UPDATE_F: " << t2-t1 << "\n";
 	//t1 = t2;
-	thrust::fill(g_hi_dotprod.begin(),g_hi_dotprod.end(),0);
-	thrust::fill(g_lo_dotprod.begin(),g_lo_dotprod.end(),0);
 
 	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 
-	cublasSetStream(handle, stream1);
+	if(prev_hi != I_hi) {
+
+		cublasSetStream(handle, stream1);
 
 //	t2 = CycleTimer::currentTicks();
 //	cout << "UPDATE_F, INIT: " << t2-t1 << "\n";
 //	t1 = t2;
-	
-	cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
+		
+		cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_hi * state.num_attributes], 1, &beta, raw_g_hi_dotprod, 1 );
 	
 //	t2 = CycleTimer::currentTicks();
 //	cout << "SGEMV 1: " << t2-t1 << "\n";
 //	t1 = t2;
+	}
 
-	cublasSetStream(handle, stream2);
+	if(prev_lo != I_lo) {
+
+		cublasSetStream(handle, stream2);
 	
-	cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
+		cublasSgemv( handle, CUBLAS_OP_T, state.num_attributes, state.num_train_data, &alpha, raw_g_x, state.num_attributes, &raw_g_x[I_lo * state.num_attributes], 1, &beta, raw_g_lo_dotprod, 1 );
 	
+	}
 //	t2 = CycleTimer::currentTicks();
 //	cout << "SGEMV 2: " << t2-t1 << "\n";
 //	t1 = t2;
@@ -365,6 +377,9 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.begin(), g_lo_dotprod.begin(), g_x_sq.begin(), g_f.begin())),
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_hi_dotprod.end(), g_lo_dotprod.end(), g_x_sq.end(),g_f.end())),
        	             update_functor(state.gamma, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new, y_lo, y_hi, x_hi_sq, x_lo_sq));
+
+	prev_hi = I_hi;
+	prev_lo = I_lo;
 
 //	t2 = CycleTimer::currentTicks();
 //	cout << "UPDATE_FUNCTOR: " << t2-t1 << "\n";
