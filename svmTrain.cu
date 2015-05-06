@@ -537,7 +537,7 @@ int main(int argc, char *argv[]) {
 	//check iteration number for stopping condition
 	int num_iter = 0;
  
-	thrust::host_vector<float> g_x_sq (state.num_train_data);
+	thrust::device_vector<float> g_x_sq (state.num_train_data);
 
 //	t2 = CycleTimer::currentTicks();
 	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
