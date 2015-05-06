@@ -1,6 +1,11 @@
 #ifndef SVMTRAIN
 #define SVMTRAIN
 
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cuda.h>
+#include <cblas.h>
+
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
 #include <thrust/copy.h> 
@@ -14,23 +19,6 @@
 #include <list>
 #include <vector>
 #include <iostream>
-class SvmTrain {
-
-private:
-
-	int a;
-	int b;
-
-public:
-
-    SvmTrain();
-    //~SvmTrain();
-
-    void setup();
-
-    void train();
-};
-
 
 class myCache {
 
@@ -40,7 +28,6 @@ class myCache {
 			int max_size;
 			int size;
 			std::vector< thrust::device_vector<float> > lines;
-			//thrust::device_vector<float> line;
 			std::map<int, int> my_map; 
 			std::list<int> order;
 
@@ -49,8 +36,6 @@ class myCache {
 			void dump_map_contents();
 			
 			myCache(int max_size, int line_size);
-
-			//void add(int key, thrust::device_vector<float>& val);
 
 			thrust::device_vector<float>* lookup(int key);
 
@@ -155,4 +140,66 @@ thrust::device_vector<float>& myCache::get_new_cache_line(int key) {
 	return lines[size++];
 	
 }
+
+
+
+class SvmTrain {
+
+private:
+
+	thrust::host_vector<float> x;
+	thrust::host_vector<int> y;
+
+	thrust::device_vector<float> g_x;
+	thrust::device_vector<int> g_y;
+	
+	thrust::device_vector<float> g_x_hi;
+	thrust::device_vector<float> g_x_lo;
+	
+	thrust::device_vector<float> g_f;
+
+	thrust::device_vector<float> g_alpha;
+	
+ 
+	thrust::device_vector<float> g_x_sq;
+
+	float* raw_g_x;
+
+	cublasHandle_t handle;
+	cudaStream_t stream1;
+	cudaStream_t stream2;
+
+	//Cache for kernel computations
+	myCache* lineCache;	
+
+public:
+	
+	float b_lo;
+	float b_hi;
+	float b;
+
+    SvmTrain();
+
+    void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
+
+    void train_step();
+
+	void init_cuda_handles();
+
+	void destroy_cuda_handles();
+	
+	int update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new);
+
+	thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit);
+
+	float clip_value(float num, float low, float high);
+	
+	float rbf_kernel(int i1, int i2);
+	
+	void get_x(float* x, float* x_copy, int idx, int num_attributes);
+
+	float get_train_accuracy();
+
+};
+
 #endif

@@ -13,6 +13,7 @@
 #include <math.h>
 #include <vector>
 #include "CycleTimer.h"
+#include "svmTrainMain.hpp"
 
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
@@ -27,149 +28,6 @@
 #define IDX2C(i,j,ld) (((j)*(ld))+(i))
 
 using namespace std;
-
-void SvmTrain::setup() {
-
-	cout << "A late goodbye";
-}
-
-float clip_value(float num, float low, float high);
-float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2);
-void get_x(float* x, float* x_copy, int idx, int num_attributes);
-float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int> &y, thrust::device_vector<float> &g_alpha, float b);
-
-typedef struct {
-
-	int num_attributes;
-	int num_train_data;
-	float c;
-	float gamma;
-	float epsilon;
-	char input_file_name[60];
-	char model_file_name[60];
-	int max_iter;
-	int cache_size;
-
-} state_model;
-
-//global structure for training parameters
-static state_model state;
-
-static void usage_exit() {
-    cerr <<
-"   Command Line:\n"
-"\n"
-"   -a/--num-att        :  [REQUIRED] The number of attributes\n"
-"									  /features\n"
-"   -x/--num-ex       	:  [REQUIRED] The number of training \n"
-"									  examples\n"
-"   -f/--file-path      :  [REQUIRED] Path to the training file\n"
-"   -c/--cost        	:  Parameter c of the SVM (default 1)\n"
-"   -g/--gamma       	:  Parameter gamma of the radial basis\n"
-"						   function: exp(-gamma*|u-v|^2)\n"
-"						   (default: 1/num-att)"
-"   -e/--epsilon        :  Tolerance of termination criterion\n"
-"						   (default 0.001)"
-"	-n/--max-iter		:  Maximum number of iterations\n"
-"						   (default 150,000"
-"	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
-"	-s/--cache-size		:  Size of cache (num cache lines)\n"
-"\n";
-    
-	exit(-1);
-}
-
-static struct option longOptionsG[] =
-{
-    { "num-att",        required_argument,          0,  'a' },
-    { "num-ex",         required_argument,          0,  'x' },
-    { "cost",           required_argument,          0,  'c' },
-    { "gamma",          required_argument,          0,  'g' },
-    { "file-path",      required_argument,          0,  'f' },
-    { "epsilon",       	required_argument,          0,  'e' },
-    { "max-iter",		required_argument,			0,	'n'	},
-    { "model",			required_argument,			0,	'm' },
-    { "cache-size",		required_argument,			0,	's' },
-    { 0,                0,                          0,   0  }
-};
-
-static void parse_arguments(int argc, char* argv[]) {
-
-    // Default Values
-    state.epsilon = 0.001;
-    state.c = 1;
-	state.num_attributes = -1;
-	state.num_train_data = -1;
-	state.gamma = -1;
-	strcpy(state.input_file_name, "");
-	strcpy(state.model_file_name, "");
-	state.max_iter = 150000;
-	state.cache_size = 10;
-
-    // Parse args
-    while (1) {
-        int idx = 0;
-        int c = getopt_long(argc, argv, "a:x:c:g:f:e:n:m:s:", longOptionsG, &idx);
-
-        if (c == -1) {
-            // End of options
-            break;
-        }
-
-        switch (c) {
-        case 'a':
-            state.num_attributes = atoi(optarg);
-            break;
-        case 'x':
-            state.num_train_data = atoi(optarg);
-            break;
-        case 'c':
-            state.c = atof(optarg);
-            break;
-        case 'g':
-            state.gamma = atof(optarg);
-            break;
-       	case 'f':
-            strcpy(state.input_file_name, optarg);
-            break;
-       	case 'e':
-            state.epsilon = atof(optarg);
-            break;
-       	case 'n':
-       		state.max_iter = atoi(optarg);
-       		break;
-       	case 'm':
-       		strcpy(state.model_file_name, optarg);
-       		break;
-       	case 's':
-       		state.cache_size = atoi(optarg);
-       		break;
-        default:
-            cerr << "\nERROR: Unknown option: -" << c << "\n";
-            // Usage exit
-            usage_exit();
-        }
-    }
-
-	if(strcmp(state.input_file_name,"")==0 || strcmp(state.model_file_name,"")==0) {
-
-		cerr << "Enter a valid file name\n";
-		usage_exit();
-	}
-
-	if(state.num_attributes <= 0 || state.num_train_data <= 0) {
-
-		cerr << "Missing a required parameter, or invalid parameter\n";
-		usage_exit();
-
-	}
-
-	if(state.gamma < 0) {
-
-		state.gamma = 1 / state.num_attributes;
-	}
-
-}
 
 // Scalars
 const float alpha = 1;
@@ -269,33 +127,9 @@ struct update_functor
 };
 
 
-static cublasHandle_t handle;
-static cudaStream_t stream1;
-static cudaStream_t stream2;
-
-
-thrust::device_vector<float>& get_g_hi_dp() {
-
-	static thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
-	return g_hi_dotprod;
-}
-
-
-thrust::device_vector<float>& get_g_lo_dp() {
-
-	static thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
-	return g_lo_dotprod;
-
-}
-
-int prev_hi;
-int prev_lo;
-
-//Cache for kernel computations
-myCache* lineCache;	
 
 //cache lookup
-thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit) {
+thrust::device_vector<float>& SvmTrain::lookup_cache(int I_idx, bool& cache_hit) {
 
 	//static thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 	thrust::device_vector<float>* lookup = lineCache->lookup(I_idx);
@@ -312,7 +146,7 @@ thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit) {
 }
 
 //Allocate x_hi, x_lo and an empty vector in device	i
-void init_cuda_handles() {
+void SvmTrain::init_cuda_handles() {
 
 	cublasStatus_t status;
 	cudaError_t cudaStat;
@@ -336,14 +170,14 @@ void init_cuda_handles() {
 	
 }
 
-void destroy_cuda_handles() {
+void SvmTrain::destroy_cuda_handles() {
 
 	cublasDestroy(handle);
 
 }
 
 
-inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
+int SvmTrain::update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
 
 //	unsigned long long t1,t2;
 //	t1 = CycleTimer::currentTicks();
@@ -457,19 +291,9 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 	return 0;
 }
 
-struct compare_mine
-{
-  __host__ __device__
-  bool operator()(float lhs, float rhs)
-  {
-    return (lhs < rhs);
-  }
-};
 
-
-int main(int argc, char *argv[]) {
-
-
+void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
+	
     int deviceCount = 0;
     cudaError_t err = cudaGetDeviceCount(&deviceCount);
 
@@ -486,215 +310,115 @@ int main(int argc, char *argv[]) {
         printf("   CUDA Cap:   %d.%d\n", deviceProps.major, deviceProps.minor);
     }
     printf("---------------------------------------------------------\n");
-
-
-	//Obtain the command line arguments
-	parse_arguments(argc, argv);
-
-	//input data attributes and labels
-	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);// = new float[state.num_train_data * state.num_attributes];
-	std::vector<int> raw_y(state.num_train_data,0);// = new int[state.num_train_data];
-
-	//read data from input file
-	cout << state.num_train_data << " " << state.num_attributes << " " << state.input_file_name << "\n";
-
-	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
-	cout << "Populated Data from input file\n";
 	
-	unsigned long long t1, t2, start;
-	t1 = CycleTimer::currentTicks();
-	start = CycleTimer::currentSeconds();
-	
-	thrust::host_vector<float> x (raw_x);
-	thrust::host_vector<int> y (raw_y);
-
+	x = thrust::host_vector<float>(raw_x);
+	y = thrust::host_vector<int>(raw_y);
 
 	//cout << "PRE COPY: 0\n";
 
 	//Copy x and y to device
-	thrust::device_vector<float> g_x (x.begin(), x.end());
-	thrust::device_vector<int> g_y(y.begin(), y.end());
+	g_x = thrust::device_vector<float>(x.begin(), x.end());
+	g_y = thrust::device_vector<int>(y.begin(), y.end());
 	
-	thrust::device_vector<float> g_x_hi(state.num_attributes);
-	thrust::device_vector<float> g_x_lo(state.num_attributes);
+	g_x_hi = thrust::device_vector<float>(state.num_attributes);
+	g_x_lo = thrust::device_vector<float>(state.num_attributes);
 	
-//	t2 = CycleTimer::currentTicks();
-
-	//cout << "COPY: " << t2 - t1 << "\n";
-
-//	t1 = t2;
-
 	// Initialize f on device
-	thrust::device_vector<float> g_f(state.num_train_data);
+	g_f  = thrust::device_vector<float>(state.num_train_data);
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 
 	//Initialize alpha on device
-	thrust::device_vector<float> g_alpha(state.num_train_data, 0);
+	g_alpha = thrust::device_vector<float>(state.num_train_data, 0);
 	
-	//b (intercept), checks optimality condition for stopping
-	float b_lo, b_hi;
-
-	//check iteration number for stopping condition
-	int num_iter = 0;
- 
-	thrust::host_vector<float> g_x_sq (state.num_train_data);
-
-//	t2 = CycleTimer::currentTicks();
-	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
-//	t1 = t2;
-
+	g_x_sq = thrust::device_vector<float>(state.num_train_data);
+	
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
 
-	t2 = CycleTimer::currentTicks();
-	//cout << "G_X_SQ CALC: " << t2-t1 << "\n";
-	t1 = t2;
-	/*cout << "***g_x_sq***\n";
-	for(int i=0; i<state.num_train_data; i++) {
-		cout << g_x_sq[i] << '\n';
-	}*/
-	
 	init_cuda_handles();
-	//t2 = CycleTimer::currentTicks();
-	//cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
-	//t1 = t2;
 	
 	lineCache = new myCache(state.cache_size, state.num_train_data);
 
-	//t2 = CycleTimer::currentTicks();
-	//cout << "INIT CACHE: " << t2-t1 << "\n";
-	//t1 = t2;
+	raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
 
-	float* raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
-	//float* raw_g_f = thrust::raw_pointer_cast(&g_f[0]);
+}
+//	t2 = CycleTimer::currentTicks();
+	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
+//	t1 = t2;
+
+
+void SvmTrain::train_step() {
 
 	thrust::device_vector<float>::iterator iter;
 	//float* iter;
-	do {
 
-		//cout << "Current iteration number: " << num_iter << "\n";
+	//Set up I_set1 and I_set2
+	thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
+	thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
 		
-		//Set up I_set1 and I_set2
-		thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
-		thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
-		
-		thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
-    	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
-        	             arbitrary_functor(state.c));
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
+ 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
+       	             arbitrary_functor(state.c));
 	
-	//	t2 = CycleTimer::currentTicks();
-	//	cout << "I_SET CALC: " << t2 - t1 << "\n";
-	//	t1 = t2;
-		/*cout << "******g_I_set2******\n";
-		for(int i=0; i<g_I_set2.size(); i++) {
-			cout << g_I_set2[i] << "\n";
-		}*/
+	//get b_hi and b_low
+	iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
 
-		//get b_hi and b_low
-		iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
+	int I_lo = iter - g_I_set2.begin();
+	b_lo = *iter;
 
-		int I_lo = iter - g_I_set2.begin();
-		b_lo = *iter;
+	//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
 
-		//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
+	iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
-		iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
+	int I_hi = iter - g_I_set1.begin();
+	b_hi = *iter;
 
-		int I_hi = iter - g_I_set1.begin();
-		b_hi = *iter;
+	//cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
+	//cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
 
-		//cout << "I_lo: \t" << I_lo << ", I_hi: \t" << I_hi << '\n';
-		//cout << "b_lo: \t" << b_lo << ", b_hi: \t" << b_hi << '\n';
-
-		int y_lo = y[I_lo];
-		int y_hi = y[I_hi];
+	int y_lo = y[I_lo];
+	int y_hi = y[I_hi];
 		
-	//	t2 = CycleTimer::currentTicks();
-	//	cout << "MAX_MIN CALC: " << t2 - t1 << "\n";
-	//	t1 = t2;
-		float eta = rbf_kernel(x,I_hi,I_hi) + rbf_kernel(x,I_lo,I_lo) - (2*rbf_kernel(x,I_lo,I_hi)) ;
+	float eta = rbf_kernel(I_hi,I_hi) + rbf_kernel(I_lo,I_lo) - (2*rbf_kernel(I_lo,I_hi)) ;
 		
-	//	t2 = CycleTimer::currentTicks();
-	//	cout << "ETA CALC: " << t2 - t1 << "\n";
-	//	t1 = t2;
-		//cout << "eta: " << eta << '\n';
+	//cout << "eta: " << eta << '\n';
 
-		//obtain alpha_low and alpha_hi (old values)
-		float alpha_lo_old = g_alpha[I_lo];
-		float alpha_hi_old = g_alpha[I_hi];
+	//obtain alpha_low and alpha_hi (old values)
+	float alpha_lo_old = g_alpha[I_lo];
+	float alpha_hi_old = g_alpha[I_hi];
 
-		//update alpha_low and alpha_hi
-		float s = y_lo*y_hi;
-		float alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
-		float alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
+	//update alpha_low and alpha_hi
+	float s = y_lo*y_hi;
+	float alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
+	float alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
 
-		//clip new alpha values between 0 and C
-		alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
-		alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
+	//clip new alpha values between 0 and C
+	alpha_lo_new = clip_value(alpha_lo_new, 0.0, state.c);
+	alpha_hi_new = clip_value(alpha_hi_new, 0.0, state.c);
 
-		//cout << "alpha_lo_new: " << alpha_lo_new << '\n';
-		//cout << "alpha_hi_new: " << alpha_hi_new << '\n';
-		
-		//store new alpha_1 and alpha_2 values
-		g_alpha[I_lo] = alpha_lo_new;
-		g_alpha[I_hi] = alpha_hi_new;
+	//cout << "alpha_lo_new: " << alpha_lo_new << '\n';
+	//cout << "alpha_hi_new: " << alpha_hi_new << '\n';
+	
+	//store new alpha_1 and alpha_2 values
+	g_alpha[I_lo] = alpha_lo_new;
+	g_alpha[I_hi] = alpha_hi_new;
 
 	//	t2 = CycleTimer::currentTicks();
 	//	cout << "ALPHA UPDATE: " << t2-t1 << "\n";
 	//	t1 = t2;
 		//update f values
-		update_f(g_f, raw_g_x, g_x_sq, I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
+	update_f(I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
 
 	//	t2 = CycleTimer::currentTicks();
 	//	cout << "UPDATE_F: " << t2-t1 << "\n";
 	//	t1 = t2;
 
-		//Increment number of iterations to reach stopping condition
-		num_iter++;
-
-	//	cout << "--------------------------------\n";
-
-	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
-	
-	t2 = CycleTimer::currentSeconds();
-	cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
-
-	//check if converged or max_iter stop
-	if(b_lo > (b_hi + (2*state.epsilon))) {
-		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
-	} else {
-		cout << "Converged at iteration number: " << num_iter << "\n";
-	}
-
-	destroy_cuda_handles();
-
-	//obtain final b intercept
-	float b = (b_lo + b_hi)/2;
-	cout << "b: " << b << "\n";
-
-	//obtain training accuracy
-	float train_accuracy = get_train_accuracy(x, y, g_alpha, b);
-	cout << "Training accuracy: " << train_accuracy << "\n";
-
-	//write model to file
-	//write_out_model(x, y, alpha, b);
-
-	//cout << "Training model has been saved to the file " << state.model_file_name << "\n";
-
-	//clear training data
-	//for(int i = 0 ; i < state.num_train_data; i++) {	
-	//	delete [] x[i];
-	//}
-
-	//delete [] x;
-	//delete [] y;
-
-	return 0;
+	///Increment number of iterations to reach stopping condition
 }
 
-float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int> &y, thrust::device_vector<float> &g_alpha, float b) {
+float SvmTrain::get_train_accuracy() {
 	int num_correct = 0;
 
 	thrust::host_vector<float> alpha = g_alpha; 
@@ -707,7 +431,7 @@ float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int>
 
 		for(int j=0; j<state.num_train_data; j++) {
 			if(raw_alpha[j] != 0) {
-				dual += y[j]*raw_alpha[j]*rbf_kernel(x,j,i);
+				dual += y[j]*raw_alpha[j]*rbf_kernel(j,i);
 			}
 		}
 
@@ -726,7 +450,7 @@ float get_train_accuracy(thrust::host_vector<float> &x, thrust::host_vector<int>
 	return ((float)num_correct/(state.num_train_data));
 }
 
-float clip_value(float num, float low, float high) {
+float SvmTrain::clip_value(float num, float low, float high) {
 	if(num < low) {
 		return low;
 	} else if(num > high) {
@@ -737,9 +461,7 @@ float clip_value(float num, float low, float high) {
 }
 
 
-
-
-void get_x(float* x, float* x_copy, int idx, int num_attributes) {
+void SvmTrain::get_x(float* x, float* x_copy, int idx, int num_attributes) {
 	int ctr = 0;
 
 	int start_index = (idx*num_attributes);
@@ -751,7 +473,7 @@ void get_x(float* x, float* x_copy, int idx, int num_attributes) {
 }
 
 
-float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2){
+float SvmTrain::rbf_kernel(int i1, int i2){
 	
 	float* i2_copy = new float[state.num_attributes];
 
@@ -761,10 +483,6 @@ float rbf_kernel(thrust::host_vector<float> &x, int i1, int i2){
 	get_x(raw_i2, i2_copy, 0, state.num_attributes);
 	
 	cblas_saxpy(state.num_attributes, -1, raw_i1, 1, i2_copy, 1); 
-
-	//float norm = cblas_snrm2(state.num_attributes, i2_copy, 1);
-
-	///float result = (float)exp(-1 *(float)state.gamma*norm*norm);
 
 	float norm_sq = cblas_sdot(state.num_attributes, i2_copy, 1, i2_copy, 1);
 
