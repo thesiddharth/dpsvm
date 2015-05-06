@@ -48,6 +48,7 @@ typedef struct {
 	char input_file_name[60];
 	char model_file_name[60];
 	int max_iter;
+	int cache_size;
 
 } state_model;
 
@@ -72,6 +73,7 @@ static void usage_exit() {
 "	-n/--max-iter		:  Maximum number of iterations\n"
 "						   (default 150,000"
 "	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
+"	-s/--cache-size		:  Size of cache (num cache lines)\n"
 "\n";
     
 	exit(-1);
@@ -87,6 +89,7 @@ static struct option longOptionsG[] =
     { "epsilon",       	required_argument,          0,  'e' },
     { "max-iter",		required_argument,			0,	'n'	},
     { "model",			required_argument,			0,	'm' },
+    { "cache-size",		required_argument,			0,	's' },
     { 0,                0,                          0,   0  }
 };
 
@@ -101,11 +104,12 @@ static void parse_arguments(int argc, char* argv[]) {
 	strcpy(state.input_file_name, "");
 	strcpy(state.model_file_name, "");
 	state.max_iter = 150000;
+	state.cache_size = 10;
 
     // Parse args
     while (1) {
         int idx = 0;
-        int c = getopt_long(argc, argv, "a:x:c:g:f:e:n:m:", longOptionsG, &idx);
+        int c = getopt_long(argc, argv, "a:x:c:g:f:e:n:m:s:", longOptionsG, &idx);
 
         if (c == -1) {
             // End of options
@@ -125,17 +129,20 @@ static void parse_arguments(int argc, char* argv[]) {
         case 'g':
             state.gamma = atof(optarg);
             break;
-       case 'f':
+       	case 'f':
             strcpy(state.input_file_name, optarg);
             break;
-       case 'e':
+       	case 'e':
             state.epsilon = atof(optarg);
             break;
-       case 'n':
+       	case 'n':
        		state.max_iter = atoi(optarg);
        		break;
-       case 'm':
+       	case 'm':
        		strcpy(state.model_file_name, optarg);
+       		break;
+       	case 's':
+       		state.cache_size = atoi(optarg);
        		break;
         default:
             cerr << "\nERROR: Unknown option: -" << c << "\n";
@@ -168,7 +175,7 @@ static void parse_arguments(int argc, char* argv[]) {
 const float alpha = 1;
 const float beta = 0;
 
-
+//functor for obtaining the I sets
 struct arbitrary_functor
 {
 
@@ -219,7 +226,7 @@ struct arbitrary_functor
 	}
 };
 
-
+//functor for performing the f_update step in GPU using Thrust
 struct update_functor
 {
 	const float gamma;
@@ -266,8 +273,6 @@ static cublasHandle_t handle;
 static cudaStream_t stream1;
 static cudaStream_t stream2;
 
-//static float* raw_g_hi_dotprod; 
-//static float* raw_g_lo_dotprod; 
 
 thrust::device_vector<float>& get_g_hi_dp() {
 
@@ -283,13 +288,13 @@ thrust::device_vector<float>& get_g_lo_dp() {
 
 }
 
-//static thrust::device_vector<float> g_lo_dotprod (state.num_train_data);
-
 int prev_hi;
 int prev_lo;
 
+//Cache for kernel computations
 myCache* lineCache;	
 
+//cache lookup
 thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit) {
 
 	//static thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
@@ -328,15 +333,6 @@ void init_cuda_handles() {
 		cout << "CUDA stream initialization failed\n"; 
 		exit(EXIT_FAILURE); 
 	}
-
-//	thrust::device_vector<float>& g_lo_dotprod  = get_g_lo_dp();
-//	thrust::device_vector<float>& g_hi_dotprod  = get_g_hi_dp();
-
-//	raw_g_hi_dotprod = thrust::raw_pointer_cast(&g_hi_dotprod[0]);
-//	raw_g_lo_dotprod = thrust::raw_pointer_cast(&g_lo_dotprod[0]);
-
-//	prev_hi = -1;
-//	prev_lo = -1;
 	
 }
 
@@ -350,12 +346,11 @@ void destroy_cuda_handles() {
 inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::device_vector<float> g_x_sq, int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new) {
 
 //	unsigned long long t1,t2;
-	
 //	t1 = CycleTimer::currentTicks();
 	
-//	cout << I_hi << "," << I_lo << "\n";
+	//	cout << I_hi << "," << I_lo << "\n";
 
-	//lineCache -> dump_map_contents();	
+	//	lineCache -> dump_map_contents();	
 
 
 	bool hi_hit;
@@ -369,8 +364,6 @@ inline int update_f(thrust::device_vector<float> &g_f, float* raw_g_x, thrust::d
 
 	//cout << "UPDATE_F: " << t2-t1 << "\n";
 	//t1 = t2;
-
-	//thrust::device_vector<float> g_hi_dotprod (state.num_train_data);
 
 	if(!hi_hit) {
 
@@ -568,7 +561,7 @@ int main(int argc, char *argv[]) {
 	//cout << "INIT_CUDA_HANDLES: " << t2-t1 << "\n";
 	//t1 = t2;
 	
-	lineCache = new myCache(10, state.num_train_data);
+	lineCache = new myCache(state.cache_size, state.num_train_data);
 
 	//t2 = CycleTimer::currentTicks();
 	//cout << "INIT CACHE: " << t2-t1 << "\n";
@@ -668,6 +661,7 @@ int main(int argc, char *argv[]) {
 	t2 = CycleTimer::currentSeconds();
 	cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
 
+	//check if converged or max_iter stop
 	if(b_lo > (b_hi + (2*state.epsilon))) {
 		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
 	} else {
