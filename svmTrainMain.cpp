@@ -188,18 +188,6 @@ int main(int argc, char *argv[]) {
 
 	MPI::COMM_WORLD.Barrier();
 
-	/*
-	for(int i = 0; i < cluster_size; i++) {
-		MPI::COMM_WORLD.Barrier();
-		if (i == rank) {
-    		for(int j=0; j<state.num_attributes; j++) {
-				cout << raw_x[j] << ',';
-			}
-			cout << "\n\n";
-		}
-	}
-	*/
-
 	//SVM class initialization (locl to every process)
 	SvmTrain svm(shard_size[rank], shard_disp[rank]);
 	
@@ -225,10 +213,20 @@ int main(int argc, char *argv[]) {
 	//check num iter for convergence
 	int num_iter = 0;
 
+	//gather variables from local processes
+	int *I_lo, *I_hi;
+	float *f_hi, *f_lo;
+
 	//alpha copies at root node, initialized to zero
 	float *alpha;
 	if(rank == 0) {
 		alpha = new float[state.num_train_data]();
+
+		//assign receive buffers at root
+		I_lo = new int[cluster_size];
+		I_hi = new int[cluster_size];
+		f_lo = new float[cluster_size];
+		f_hi = new float[cluster_size];
 	}
 
 	MPI::COMM_WORLD.Barrier();
@@ -236,45 +234,33 @@ int main(int argc, char *argv[]) {
 	do {
 
 		if(rank == 0) {
-
 			cout << "Iteration: " << num_iter << "\n";	
 		}
 
 		step1_rv rv = svm.train_step1();
-
-		int *I_lo, *I_hi;
-		float *f_hi, *f_lo;
-
-		//assign receive buffers at root
-		if(rank == 0) {
-			I_lo = new int[cluster_size];
-			I_hi = new int[cluster_size];
-			f_lo = new float[cluster_size];
-			f_hi = new float[cluster_size];
-			cout << "Post Step 1\n" ;
-		}
-
-		MPI::COMM_WORLD.Barrier();
 
 		//gather all local extremes at root
 		MPI::COMM_WORLD.Gather(&(rv.I_lo), 1, MPI_INT, I_lo, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Gather(&(rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Gather(&(rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
 		MPI::COMM_WORLD.Gather(&(rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
-		
-		MPI::COMM_WORLD.Barrier();
 
 		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
 
 		if(rank == 0) {
 		
-			cout << "Post gather: " << I_lo[0] << "," << I_hi[0] << "\n";
+			//cout << "Post gather: " << I_lo[0] << "," << I_hi[0] << "\n";
 			
 			float max = -1000000000;
 			float min = 1000000000;
 			int max_idx = 0;
 			int min_idx = 0;
+
+			/*cout << "Gathered I \n";
+			for(int i=0; i<cluster_size; i++) {
+				cout << i << ":" << I_lo[i] << "\t" << I_hi[i] << "\n";
+			}*/
 
 			//obtain global maximas
 			for(int i=0; i<cluster_size; i++) {
@@ -317,38 +303,34 @@ int main(int argc, char *argv[]) {
 			I_lo_global = max_idx;
 			I_hi_global = min_idx;
 			
-			cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
+			//cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
 		}
-
-		MPI::COMM_WORLD.Barrier();
 
 		//Broadcast global values to all proecesses
 		MPI::COMM_WORLD.Bcast(&I_lo_global, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Bcast(&I_hi_global, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Bcast(&alpha_lo_new, 1, MPI_FLOAT, 0);
 		MPI::COMM_WORLD.Bcast(&alpha_hi_new, 1, MPI_FLOAT, 0);
-		
-		MPI::COMM_WORLD.Barrier();
+		MPI::COMM_WORLD.Bcast(&b_lo, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Bcast(&b_hi, 1, MPI_FLOAT, 0);
 
-		if (rank == 1 ) {
+		/*if (rank == 1 ) {
 
 			cout << "Post Broadcasts " << I_lo_global << "," << I_hi_global << "\n"  ;
 
-		}
+		}*/
 
 		//step2 of svm iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
 		
-		if (rank == 0 ) {
+		/*if (rank == 0 ) {
 
 			cout << "Post Step2\n" ;
 
-		}
+		}*/
 
 		//reach convergence
 		num_iter++;
-		
-		MPI::COMM_WORLD.Barrier();
 
 		//	cout << "--------------------------------\n";
 
