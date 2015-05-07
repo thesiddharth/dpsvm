@@ -20,27 +20,27 @@
 
 void myCache::dump_map_contents() {
 
-    std::map<int,int>::iterator it; 
+	std::map<int,int>::iterator it; 
 
-    std::cout << "--------\n";
+	std::cout << "--------\n";
 
-    for(it = my_map.begin(); it != my_map.end(); ++it) {
+	for(it = my_map.begin(); it != my_map.end(); ++it) {
 
-        std::cout << it->first << "," << it->second << "::" ;
+		std::cout << it->first << "," << it->second << "::" ;
 
-    }   
+	}   
 
-    std::cout << "\n";
+	std::cout << "\n";
 
-    std::list<int>::iterator it2;
+	std::list<int>::iterator it2;
 
-    for(it2 = order.begin(); it2 != order.end(); ++it2) {
+	for(it2 = order.begin(); it2 != order.end(); ++it2) {
 
-        std::cout << *it2 << "::" ;
+		std::cout << *it2 << "::" ;
 
-    }   
+	}   
 
-    std::cout << "\n----------\n";
+	std::cout << "\n----------\n";
 
 
 }
@@ -48,58 +48,58 @@ void myCache::dump_map_contents() {
 
 myCache::myCache(int max_size, int line_size) {
 
-    this->max_size = max_size;
-    this->line_size = line_size;
-    this->size = 0;
-    lines.resize(max_size);
+	this->max_size = max_size;
+	this->line_size = line_size;
+	this->size = 0;
+	lines.resize(max_size);
 
-    for(int i = 0; i < max_size; i++) {
+	for(int i = 0; i < max_size; i++) {
 
-        lines[i] = thrust::device_vector<float>(line_size);
-    }   
+		lines[i] = thrust::device_vector<float>(line_size);
+	}   
 }
 
 thrust::device_vector<float>* myCache::lookup(int key) {
 
-    std::map<int,int>::iterator it = my_map.find(key);
+	std::map<int,int>::iterator it = my_map.find(key);
 
-    if(it != my_map.end()) {
+	if(it != my_map.end()) {
 
-        order.remove(key);
-        order.push_back(key);
+		order.remove(key);
+		order.push_back(key);
 
-        return &lines[it->second];
+		return &lines[it->second];
 
-    }
-    else {
+	}
+	else {
 
-        return NULL;
+		return NULL;
 
-    }
+	}
 
 }
 
 thrust::device_vector<float>& myCache::get_new_cache_line(int key) {
 
-    if(size == max_size){
+	if(size == max_size){
 
-        int del_key = order.front();
-        std::map<int,int>::iterator it = my_map.find(del_key);
-        int line_number = it->second;
+		int del_key = order.front();
+		std::map<int,int>::iterator it = my_map.find(del_key);
+		int line_number = it->second;
 
-        my_map.erase(it);
+		my_map.erase(it);
 
-        my_map[key] = line_number;
+		my_map[key] = line_number;
 
-        order.push_back(key);
-        order.pop_front();
+		order.push_back(key);
+		order.pop_front();
 
-        return lines[line_number];
-    }
+		return lines[line_number];
+	}
 
-    my_map[key] = size;
-    order.push_back(key);
+	my_map[key] = size;
+	order.push_back(key);
 
-    return lines[size++];
+	return lines[size++];
 
 }

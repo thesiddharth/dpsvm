@@ -5,12 +5,14 @@
 #include "parse.hpp"
 #include <iostream>
 #include <vector>
+#include <iterator>
 #include <string.h>
 #include <getopt.h>
 #include <math.h>
 #include <vector>
 #include "CycleTimer.h"
-//#include <mpi.h>
+#include <unistd.h>
+#include <mpi.h>
 
 state_model state;
 
@@ -132,28 +134,91 @@ static void parse_arguments(int argc, char* argv[]) {
 
 }
 
+void initialize_shard_sizes(int *shard_size, int cluster_size);
+void initialize_shard_disp(int *shard_size, int *shard_disp, int cluster_size);
 
 int main(int argc, char *argv[]) {
+
+	MPI::Init(argc, argv);
 
 	//Obtain the command line arguments
 	parse_arguments(argc, argv);
 
-	//input data attributes and labels
-	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);// = new float[state.num_train_data * state.num_attributes];
-	std::vector<int> raw_y(state.num_train_data,0);// = new int[state.num_train_data];
+	//MPI statistics
+	int rank, cluster_size;
 
-	//read data from input file
-	cout << state.num_train_data << " " << state.num_attributes << " " << state.input_file_name << "\n";
+	//Open MPI initialization
+	cluster_size = MPI::COMM_WORLD.Get_size();
+	rank = MPI::COMM_WORLD.Get_rank();
+	
+	char hostname[MPI_MAX_PROCESSOR_NAME];
+	int len;
+	memset(hostname,0,MPI_MAX_PROCESSOR_NAME);
+	MPI::Get_processor_name(hostname,len);
+	memset(hostname+len,0,MPI_MAX_PROCESSOR_NAME-len);
+
+	//distribution of datapoints in each shard
+	int *shard_size;
+	int *shard_disp;
+
+	//input data attributes and labels
+	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);
+	std::vector<int> raw_y(state.num_train_data,0);
+
+	//initialize shard sizes
+	shard_size = new int[cluster_size];
+	initialize_shard_sizes(shard_size, cluster_size);
+
+	//initialize shard displacements
+	shard_disp = new int[cluster_size];
+	initialize_shard_disp(shard_size, shard_disp, cluster_size);
+
+	//cout << "cluster_size: " << cluster_size << "\trank: " << rank << "\n";
 
 	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
-	cout << "Populated Data from input file\n";
+	cout << "Populated Data from input file at node: " << rank << '\n';
 
-	unsigned long long start;
-	start = CycleTimer::currentSeconds();
+	MPI::COMM_WORLD.Barrier();
 
-	SvmTrain svm;
+	if(rank == 0) {
+		for(int i=0; i<cluster_size; i++) {
+			cout << shard_disp[i] << '\t' << shard_size[i] << '\n';
+		}
+	}
 
+	//MPI::COMM_WORLD.Scatterv(raw_x_array, shard_size_x, shard_disp_x, MPI_FLOAT, raw_x_shard, shard_size_x[rank], MPI_FLOAT, 0);
+	//MPI::COMM_WORLD.Scatterv(raw_y_array, shard_size_y, shard_disp_y, MPI_INT, raw_y_shard, shard_size_y[rank], MPI_INT, 0);
+
+	//cout << "Scatter complete at node " << rank << "\n";
+
+	MPI::COMM_WORLD.Barrier();
+
+	for(int i = 0; i < cluster_size; i++) {
+		MPI::COMM_WORLD.Barrier();
+		if (i == rank) {
+    		for(int j=0; j<state.num_attributes; j++) {
+				cout << raw_x[j] << ',';
+			}
+			cout << "\n\n";
+		}
+	}
+
+	/*
+	//convert shard data to vectors
+	raw_x.assign(raw_x_shard, raw_x_shard + shard_size_x[rank]);
+	raw_y.assign(raw_y_shard, raw_y_shard + shard_size_y[rank]);
+
+	//SVM class initialization (locl to every process)
+	SvmTrain svm(shard_size_y[rank], shard_disp_y[rank]);
 	svm.setup(raw_x, raw_y);
+
+	MPI::COMM_WORLD.Barrier();
+
+	//timer for training
+	unsigned long long start;
+	if(rank == 0) {
+		start = CycleTimer::currentSeconds();
+	}
 
 	int num_iter = 0;
 
@@ -199,6 +264,28 @@ int main(int argc, char *argv[]) {
 
 	//delete [] x;
 	//delete [] y;
+	*/
+
+	MPI::Finalize();
 
 	return 0;
+}
+
+void initialize_shard_sizes(int *shard_size, int cluster_size) {
+	int num_data_shard = (int)ceil((double)state.num_train_data/(double)cluster_size);
+
+	for(int i=0; i<cluster_size-1; i++) {
+		shard_size[i] = num_data_shard;
+	}
+
+	int num_data_last_shard = state.num_train_data - ((cluster_size-1)*num_data_shard);
+	shard_size[cluster_size-1] = num_data_last_shard;
+}
+
+void initialize_shard_disp(int *shard_size, int *shard_disp, int cluster_size) {
+	shard_disp[0] = 0;
+
+	for(int i=1; i<cluster_size; i++) {
+		shard_disp[i] = shard_disp[i-1] + shard_size[i-1];
+	}
 }

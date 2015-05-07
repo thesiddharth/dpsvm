@@ -292,6 +292,12 @@ int SvmTrain::update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_ol
 	return 0;
 }
 
+//Parameterized constructor
+SvmTrain::SvmTrain(int n_data, int d) {
+	num_train_data = n_data;
+	disp = d;
+}
+
 
 void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	
@@ -325,22 +331,22 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	g_x_lo = thrust::device_vector<float>(state.num_attributes);
 	
 	// Initialize f on device
-	g_f  = thrust::device_vector<float>(state.num_train_data);
+	g_f  = thrust::device_vector<float>(num_train_data);
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 
 	//Initialize alpha on device
-	g_alpha = thrust::device_vector<float>(state.num_train_data, 0);
+	g_alpha = thrust::device_vector<float>(num_train_data, 0);
 	
-	g_x_sq = thrust::device_vector<float>(state.num_train_data);
+	g_x_sq = thrust::device_vector<float>(num_train_data);
 	
-	for( int i = 0; i < state.num_train_data; i++ )
+	for( int i = 0; i < num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
 
 	init_cuda_handles();
 	
-	lineCache = new myCache(state.cache_size, state.num_train_data);
+	lineCache = new myCache(state.cache_size, num_train_data);
 
 	raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
 
@@ -356,8 +362,8 @@ void SvmTrain::train_step() {
 	//float* iter;
 
 	//Set up I_set1 and I_set2
-	thrust::device_vector<float> g_I_set1(state.num_train_data, 1000000000);
-	thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
+	thrust::device_vector<float> g_I_set1(num_train_data, 1000000000);
+	thrust::device_vector<float> g_I_set2(num_train_data, -1000000000);
 		
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
  	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),

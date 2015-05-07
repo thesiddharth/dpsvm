@@ -22,24 +22,24 @@
 
 class myCache {
 
-    private:
+	private:
 
-            int line_size;
-            int max_size;
-            int size;
-            std::vector< thrust::device_vector<float> > lines;
-            std::map<int, int> my_map;
-            std::list<int> order;
+			int line_size;
+			int max_size;
+			int size;
+			std::vector< thrust::device_vector<float> > lines;
+			std::map<int, int> my_map;
+			std::list<int> order;
 
-    public:
+	public:
 
-            void dump_map_contents();
+			void dump_map_contents();
 
-            myCache(int max_size, int line_size);
+			myCache(int max_size, int line_size);
 
-            thrust::device_vector<float>* lookup(int key);
+			thrust::device_vector<float>* lookup(int key);
 
-            thrust::device_vector<float>& get_new_cache_line(int key);
+			thrust::device_vector<float>& get_new_cache_line(int key);
 };
 
 #endif

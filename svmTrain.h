@@ -23,60 +23,63 @@
 
 class SvmTrain {
 
-private:
+	private:
 
-	thrust::host_vector<float> x;
-	thrust::host_vector<int> y;
+		thrust::host_vector<float> x;
+		thrust::host_vector<int> y;
 
-	thrust::device_vector<float> g_x;
-	thrust::device_vector<int> g_y;
-	
-	thrust::device_vector<float> g_x_hi;
-	thrust::device_vector<float> g_x_lo;
-	
-	thrust::device_vector<float> g_f;
+		thrust::device_vector<float> g_x;
+		thrust::device_vector<int> g_y;
+		
+		thrust::device_vector<float> g_x_hi;
+		thrust::device_vector<float> g_x_lo;
+		
+		thrust::device_vector<float> g_f;
 
-	thrust::device_vector<float> g_alpha;
-	
- 
-	thrust::device_vector<float> g_x_sq;
+		thrust::device_vector<float> g_alpha;
+		
+	 
+		thrust::device_vector<float> g_x_sq;
 
-	float* raw_g_x;
+		float* raw_g_x;
 
-	cublasHandle_t handle;
-	cudaStream_t stream1;
-	cudaStream_t stream2;
+		cublasHandle_t handle;
+		cudaStream_t stream1;
+		cudaStream_t stream2;
 
-	//Cache for kernel computations
-	myCache* lineCache;	
+		//Cache for kernel computations
+		myCache* lineCache;
 
-public:
-	
-	float b_lo;
-	float b_hi;
-	float b;
+		int num_train_data;
+		int disp;
 
-    SvmTrain() {}
+	public:
+		
+		float b_lo;
+		float b_hi;
+		float b;
 
-    void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
+		SvmTrain(int n_data, int d);
 
-    void train_step();
+		void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
 
-	void init_cuda_handles();
+		void train_step();
 
-	void destroy_cuda_handles();
-	
-	int update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new);
+		void init_cuda_handles();
 
-	thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit);
+		void destroy_cuda_handles();
+		
+		int update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new);
 
-	float clip_value(float num, float low, float high);
-	
-	float rbf_kernel(int i1, int i2);
-	
-	void get_x(float* x, float* x_copy, int idx, int num_attributes);
+		thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit);
 
-	float get_train_accuracy();
+		float clip_value(float num, float low, float high);
+		
+		float rbf_kernel(int i1, int i2);
+		
+		void get_x(float* x, float* x_copy, int idx, int num_attributes);
+
+		float get_train_accuracy();
 
 };
 
