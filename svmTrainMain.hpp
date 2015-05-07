@@ -16,6 +16,6 @@ typedef struct {
 } state_model;
 
 //global structure for training parameters
-state_model state;
+extern state_model state;
 
 #endif

@@ -14,6 +14,7 @@
 #include <vector>
 #include "CycleTimer.h"
 #include "svmTrainMain.hpp"
+#include "cache.hpp"
 
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 

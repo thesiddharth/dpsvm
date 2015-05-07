@@ -10,7 +10,9 @@
 #include <math.h>
 #include <vector>
 #include "CycleTimer.h"
-#include <mpi.h>
+//#include <mpi.h>
+
+state_model state;
 
 using namespace std;
 
