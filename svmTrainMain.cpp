@@ -216,6 +216,7 @@ int main(int argc, char *argv[]) {
 	//gather variables from local processes
 	int *I_lo, *I_hi;
 	float *f_hi, *f_lo;
+	float *recv;
 
 	//alpha copies at root node, initialized to zero
 	float *alpha;
@@ -227,6 +228,8 @@ int main(int argc, char *argv[]) {
 		I_hi = new int[cluster_size];
 		f_lo = new float[cluster_size];
 		f_hi = new float[cluster_size];
+
+		recv = new float[4*cluster_size];
 	}
 
 	MPI::COMM_WORLD.Barrier();
@@ -237,13 +240,10 @@ int main(int argc, char *argv[]) {
 			cout << "Iteration: " << num_iter << "\n";	
 		}
 
-		step1_rv rv = svm.train_step1();
+		float *rv = svm.train_step1();
 
 		//gather all local extremes at root
-		MPI::COMM_WORLD.Gather(&(rv.I_lo), 1, MPI_INT, I_lo, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Gather(&(rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Gather(&(rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
-		MPI::COMM_WORLD.Gather(&(rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Gather(rv, 4, MPI_FLOAT, recv, 4, MPI_FLOAT, 0);
 
 		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
@@ -257,10 +257,14 @@ int main(int argc, char *argv[]) {
 			int max_idx = 0;
 			int min_idx = 0;
 
-			/*cout << "Gathered I \n";
+			//convert gathered array to separate arrays
 			for(int i=0; i<cluster_size; i++) {
-				cout << i << ":" << I_lo[i] << "\t" << I_hi[i] << "\n";
-			}*/
+				int idx = i*4;
+				I_hi[i] = (int)recv[idx];
+				I_lo[i] = (int)recv[idx+1];
+				f_hi[i] = recv[idx+2];
+				f_lo[i] = recv[idx+3];
+			}
 
 			//obtain global maximas
 			for(int i=0; i<cluster_size; i++) {
@@ -307,32 +311,30 @@ int main(int argc, char *argv[]) {
 		}
 
 		//Broadcast global values to all proecesses
-		MPI::COMM_WORLD.Bcast(&I_lo_global, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Bcast(&I_hi_global, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Bcast(&alpha_lo_new, 1, MPI_FLOAT, 0);
-		MPI::COMM_WORLD.Bcast(&alpha_hi_new, 1, MPI_FLOAT, 0);
-		MPI::COMM_WORLD.Bcast(&b_lo, 1, MPI_FLOAT, 0);
-		MPI::COMM_WORLD.Bcast(&b_hi, 1, MPI_FLOAT, 0);
+		float *send_globals = new float[6];
+		if(rank == 0) {
+			send_globals[0] = (float)I_lo_global;
+			send_globals[1] = (float)I_hi_global;
+			send_globals[2] = alpha_lo_new;
+			send_globals[3] = alpha_hi_new;
+			send_globals[4] = b_lo;
+			send_globals[5] = b_hi;
+		}
 
-		/*if (rank == 1 ) {
+		MPI::COMM_WORLD.Bcast(send_globals, 6, MPI_FLOAT, 0);
 
-			cout << "Post Broadcasts " << I_lo_global << "," << I_hi_global << "\n"  ;
+		I_lo_global = (int)send_globals[0];
+		I_hi_global = (int)send_globals[1];
+		alpha_lo_new = send_globals[2];
+		alpha_hi_new = send_globals[3];
+		b_lo = send_globals[4];
+		b_hi = send_globals[5];
 
-		}*/
-
-		//step2 of svm iteration
+		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
-		
-		/*if (rank == 0 ) {
-
-			cout << "Post Step2\n" ;
-
-		}*/
 
 		//reach convergence
 		num_iter++;
-
-		//	cout << "--------------------------------\n";
 
 	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 	
