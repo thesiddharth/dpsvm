@@ -202,6 +202,13 @@ int main(int argc, char *argv[]) {
 
 	//SVM class initialization (locl to every process)
 	SvmTrain svm(shard_size[rank], shard_disp[rank]);
+	
+	if(rank == 0) {
+
+		cout << "PRE SETUP\n";
+
+	}
+	
 	svm.setup(raw_x, raw_y);
 
 	MPI::COMM_WORLD.Barrier();
@@ -228,6 +235,11 @@ int main(int argc, char *argv[]) {
 
 	do {
 
+		if(rank == 0) {
+
+			cout << "Iteration: " << num_iter << "\n";	
+		}
+
 		step1_rv rv = svm.train_step1();
 
 		int *I_lo, *I_hi;
@@ -239,6 +251,7 @@ int main(int argc, char *argv[]) {
 			I_hi = new int[cluster_size];
 			f_lo = new float[cluster_size];
 			f_hi = new float[cluster_size];
+			cout << "Post Step 1\n" ;
 		}
 
 		MPI::COMM_WORLD.Barrier();
@@ -248,11 +261,16 @@ int main(int argc, char *argv[]) {
 		MPI::COMM_WORLD.Gather(&(rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Gather(&(rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
 		MPI::COMM_WORLD.Gather(&(rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
+		
+		MPI::COMM_WORLD.Barrier();
 
 		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
 
 		if(rank == 0) {
+		
+			cout << "Post gather: " << I_lo[0] << "," << I_hi[0] << "\n";
+			
 			float max = -1000000000;
 			float min = 1000000000;
 			int max_idx = 0;
@@ -298,6 +316,8 @@ int main(int argc, char *argv[]) {
 
 			I_lo_global = max_idx;
 			I_hi_global = min_idx;
+			
+			cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
 		}
 
 		MPI::COMM_WORLD.Barrier();
@@ -307,12 +327,28 @@ int main(int argc, char *argv[]) {
 		MPI::COMM_WORLD.Bcast(&I_hi_global, 1, MPI_INT, 0);
 		MPI::COMM_WORLD.Bcast(&alpha_lo_new, 1, MPI_FLOAT, 0);
 		MPI::COMM_WORLD.Bcast(&alpha_hi_new, 1, MPI_FLOAT, 0);
+		
+		MPI::COMM_WORLD.Barrier();
+
+		if (rank == 1 ) {
+
+			cout << "Post Broadcasts " << I_lo_global << "," << I_hi_global << "\n"  ;
+
+		}
 
 		//step2 of svm iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
+		
+		if (rank == 0 ) {
+
+			cout << "Post Step2\n" ;
+
+		}
 
 		//reach convergence
 		num_iter++;
+		
+		MPI::COMM_WORLD.Barrier();
 
 		//	cout << "--------------------------------\n";
 

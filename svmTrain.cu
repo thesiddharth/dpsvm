@@ -324,34 +324,53 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	x = thrust::host_vector<float>(raw_x);
 	y = thrust::host_vector<int>(raw_y);
 
-	//cout << "PRE COPY: 0\n";
-
+	cout << "PRE X COPY: \n";
+ 
 	//Copy x and y to device
-	g_x = thrust::device_vector<float>(x.begin(), x.begin()) ;
-		
+	g_x = thrust::device_vector<float>(x.begin(), x.end()) ;
+	
+	cout << "POST X COPY: \n";
+	
 	//Initialize alpha on device
 	g_alpha = thrust::device_vector<float>(state.num_train_data, 0);
 	
+	cout << "POST ALPHA: \n";
+	
 	init_cuda_handles();
 	
+	cout << "POST HANDLE INIT: \n";
+	
 	g_x_sq = thrust::device_vector<float>(state.num_train_data);
+	
+	cout << "POST X_SQ: \n";
 	
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
+	
+	cout << "POST X_SQ INIT: \n";
 
 	raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
+	
+	cout << "POST G_X: \n";
 	
 	//ONLY THE FOLLOWING USE INFO PERTAINING TO THIS PARTICULAR SPLIT
 	
 	g_y = thrust::device_vector<int>(y.begin()+start, y.begin()+end);
+
+	cout << "POST G_Y: \n";
 	
 	// Initialize f on device
 	g_f  = thrust::device_vector<float>(num_train_data);
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 	
+	cout << "POST G_F INIT: \n";
+	
 	lineCache = new myCache(state.cache_size, num_train_data);
+	
+	cout << "POST LINECACHE: \n";
+	
 }
 //	t2 = CycleTimer::currentTicks();
 	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
