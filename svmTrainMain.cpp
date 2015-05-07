@@ -186,13 +186,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	//MPI::COMM_WORLD.Scatterv(raw_x_array, shard_size_x, shard_disp_x, MPI_FLOAT, raw_x_shard, shard_size_x[rank], MPI_FLOAT, 0);
-	//MPI::COMM_WORLD.Scatterv(raw_y_array, shard_size_y, shard_disp_y, MPI_INT, raw_y_shard, shard_size_y[rank], MPI_INT, 0);
-
-	//cout << "Scatter complete at node " << rank << "\n";
-
 	MPI::COMM_WORLD.Barrier();
 
+	/*
 	for(int i = 0; i < cluster_size; i++) {
 		MPI::COMM_WORLD.Barrier();
 		if (i == rank) {
@@ -202,14 +198,10 @@ int main(int argc, char *argv[]) {
 			cout << "\n\n";
 		}
 	}
-
-	/*
-	//convert shard data to vectors
-	raw_x.assign(raw_x_shard, raw_x_shard + shard_size_x[rank]);
-	raw_y.assign(raw_y_shard, raw_y_shard + shard_size_y[rank]);
+	*/
 
 	//SVM class initialization (locl to every process)
-	SvmTrain svm(shard_size_y[rank], shard_disp_y[rank]);
+	SvmTrain svm(shard_size[rank], shard_disp[rank]);
 	svm.setup(raw_x, raw_y);
 
 	MPI::COMM_WORLD.Barrier();
@@ -220,37 +212,136 @@ int main(int argc, char *argv[]) {
 		start = CycleTimer::currentSeconds();
 	}
 
+	float b_lo = 0;
+	float b_hi = 0;
+
+	//check num iter for convergence
 	int num_iter = 0;
+
+	//alpha copies at root node, initialized to zero
+	float *alpha;
+	if(rank == 0) {
+		alpha = new float[state.num_train_data]();
+	}
+
+	MPI::COMM_WORLD.Barrier();
 
 	do {
 
-		svm.train_step();		
+		step1_rv rv = svm.train_step1();
 
+		int *I_lo, *I_hi;
+		float *f_hi, *f_lo;
+
+		//assign receive buffers at root
+		if(rank == 0) {
+			I_lo = new int[cluster_size];
+			I_hi = new int[cluster_size];
+			f_lo = new float[cluster_size];
+			f_hi = new float[cluster_size];
+		}
+
+		MPI::COMM_WORLD.Barrier();
+
+		//gather all local extremes at root
+		MPI::COMM_WORLD.Gather(&(step1_rv.I_lo), 1, MPI_INT, I_lo, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Gather(&(step1_rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Gather(&(step1_rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Gather(&(step1_rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
+
+		int I_lo_global, I_hi_gloabl;
+		float alpha_lo_new, alpha_hi_new;
+
+		if(rank == 0) {
+			float max = -1000000000;
+			float min = 1000000000;
+			int max_idx = 0;
+			int min_idx = 0;
+
+			//obtain global maximas
+			for(int i=0; i<cluster_size; i++) {
+				if(f_lo[i] > max) {
+					max = f_lo[i];
+					max_idx = I_lo[i];
+				}
+
+				if(f_hi[i] < min) {
+					min = f_hi[i];
+					min_idx = I_hi[i];
+				}
+			}
+
+			b_lo = max;
+			b_hi = min;
+
+			int y_lo = raw_y[max_idx];
+			int y_hi = raw_y[min_idx];
+
+			float eta = svm.rbf_kernel(min_idx,min_idx) + rbf_kernel(max_idx,max_idx) - (2*rbf_kernel(max_idx,min_idx));
+
+			//obtain alpha_low and alpha_hi (old values)
+			float alpha_lo_old = alpha[max_idx];
+			float alpha_hi_old = alpha[min_idx];
+
+			//update alpha_low and alpha_hi
+			float s = y_lo*y_hi;
+			alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
+			alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
+
+			//clip new alpha values between 0 and C
+			alpha_lo_new = svm.clip_value(alpha_lo_new, 0.0, state.c);
+			alpha_hi_new = svm.clip_value(alpha_hi_new, 0.0, state.c);
+
+			//store new alpha_lo and alpha_hi values at root
+			alpha[max_idx] = alpha_lo_new;
+			alpha[min_idx] = alpha_hi_new;
+
+			I_lo_global = max_idx;
+			I_hi_gloabl = min_idx;
+		}
+
+		MPI::COMM_WORLD.Barrier();
+
+		//Broadcast global values to all proecesses
+		MPI::COMM_WORLD.Bcast(&I_lo_global, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Bcast(&I_hi_global, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Bcast(&alpha_lo_new, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Bcast(&alpha_hi_new, 1, MPI_FLOAT, 0);
+
+		//step2 of svm iteration
+		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
+
+		//reach convergence
 		num_iter++;
 
 		//	cout << "--------------------------------\n";
 
-	} while((svm.b_lo > (svm.b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
+	} while((b_lo > (b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 	
 	unsigned long long t2 = CycleTimer::currentSeconds();
-	cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
+	if(rank == 0) {
+		cout << "TOTAL TIME TAKEN in seconds: " << t2-start << "\n";
 
-	//check if converged or max_iter stop
-	if(svm.b_lo > (svm.b_hi + (2*state.epsilon))) {
-		cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
-	} else {
-		cout << "Converged at iteration number: " << num_iter << "\n";
+		//check if converged or max_iter stop
+		if(b_lo > (b_hi + (2*state.epsilon))) {
+			cout << "Could not converge in " << num_iter << " iterations. SVM training has been stopped\n";
+		} else {
+			cout << "Converged at iteration number: " << num_iter << "\n";
+		}
+
 	}
 
 	svm.destroy_cuda_handles();
 
-	//obtain final b intercept
-	svm.b = (svm.b_lo + svm.b_hi)/2;
-	cout << "b: " << svm.b << "\n";
+	if(rank == 0) {
+		//obtain final b intercept
+		svm.b = (b_lo + b_hi)/2;
+		cout << "b: " << svm.b << "\n";
 
-	//obtain training accuracy
-	float train_accuracy = svm.get_train_accuracy();
-	cout << "Training accuracy: " << train_accuracy << "\n";
+		//obtain training accuracy
+		float train_accuracy = svm.get_train_accuracy();
+		cout << "Training accuracy: " << train_accuracy << "\n";
+	}
 
 	//write model to file
 	//write_out_model(x, y, alpha, b);
@@ -264,7 +355,6 @@ int main(int argc, char *argv[]) {
 
 	//delete [] x;
 	//delete [] y;
-	*/
 
 	MPI::Finalize();
 
