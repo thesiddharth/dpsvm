@@ -395,14 +395,14 @@ step1_rv SvmTrain::train_step1() {
 
 	step1_rv rv;
 
-	rv.I_lo = iter - g_I_set2.begin();
+	rv.I_lo = (iter - g_I_set2.begin()) + start;
 	rv.b_lo = *iter;
 
 	//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
 
 	iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
-	rv.I_hi = iter - g_I_set1.begin();
+	rv.I_hi = (iter - g_I_set1.begin()) + start;
 	rv.b_hi = *iter;
 
 	return rv;
