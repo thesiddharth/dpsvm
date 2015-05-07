@@ -394,6 +394,9 @@ void SvmTrain::train_step2(int I_hi, int I_lo, float alpha_hi_new, float alpha_l
 	float alpha_lo_old = g_alpha[I_lo];
 	float alpha_hi_old = g_alpha[I_hi];
 	
+	int y_hi = y[I_hi];
+	int y_lo = y[I_lo];
+
 	g_alpha[I_lo] = alpha_lo_new;
 	g_alpha[I_hi] = alpha_hi_new;
 

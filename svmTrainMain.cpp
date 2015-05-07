@@ -244,12 +244,12 @@ int main(int argc, char *argv[]) {
 		MPI::COMM_WORLD.Barrier();
 
 		//gather all local extremes at root
-		MPI::COMM_WORLD.Gather(&(step1_rv.I_lo), 1, MPI_INT, I_lo, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Gather(&(step1_rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
-		MPI::COMM_WORLD.Gather(&(step1_rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
-		MPI::COMM_WORLD.Gather(&(step1_rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Gather(&(rv.I_lo), 1, MPI_INT, I_lo, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Gather(&(rv.I_hi), 1, MPI_INT, I_hi, 1, MPI_INT, 0);
+		MPI::COMM_WORLD.Gather(&(rv.b_lo), 1, MPI_FLOAT, f_lo, 1, MPI_FLOAT, 0);
+		MPI::COMM_WORLD.Gather(&(rv.b_hi), 1, MPI_FLOAT, f_hi, 1, MPI_FLOAT, 0);
 
-		int I_lo_global, I_hi_gloabl;
+		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
 
 		if(rank == 0) {
@@ -277,7 +277,7 @@ int main(int argc, char *argv[]) {
 			int y_lo = raw_y[max_idx];
 			int y_hi = raw_y[min_idx];
 
-			float eta = svm.rbf_kernel(min_idx,min_idx) + rbf_kernel(max_idx,max_idx) - (2*rbf_kernel(max_idx,min_idx));
+			float eta = svm.rbf_kernel(min_idx,min_idx) + svm.rbf_kernel(max_idx,max_idx) - (2*svm.rbf_kernel(max_idx,min_idx));
 
 			//obtain alpha_low and alpha_hi (old values)
 			float alpha_lo_old = alpha[max_idx];
@@ -297,7 +297,7 @@ int main(int argc, char *argv[]) {
 			alpha[min_idx] = alpha_hi_new;
 
 			I_lo_global = max_idx;
-			I_hi_gloabl = min_idx;
+			I_hi_global = min_idx;
 		}
 
 		MPI::COMM_WORLD.Barrier();
