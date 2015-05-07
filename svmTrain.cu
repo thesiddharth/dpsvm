@@ -377,7 +377,7 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 //	t1 = t2;
 
 
-step1_rv SvmTrain::train_step1() {
+float* SvmTrain::train_step1() {
 
 	thrust::device_vector<float>::iterator iter;
 	//float* iter;
@@ -393,17 +393,23 @@ step1_rv SvmTrain::train_step1() {
 	//get b_hi and b_low
 	iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
 
-	step1_rv rv;
+	float* rv = new float[4];
 
-	rv.I_lo = (iter - g_I_set2.begin()) + start;
-	rv.b_lo = *iter;
+	//rv.I_lo = (iter - g_I_set2.begin()) + start;
+	//rv.b_lo = *iter;
+	
+	rv[1] = (iter - g_I_set2.begin()) + start;
+	rv[3] = *iter;
 
 	//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
 
 	iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
-	rv.I_hi = (iter - g_I_set1.begin()) + start;
-	rv.b_hi = *iter;
+	//rv.I_hi = (iter - g_I_set1.begin()) + start;
+	//rv.b_hi = *iter;
+	
+	rv[0] = (iter - g_I_set1.begin()) + start;
+	rv[2] = *iter;
 
 	return rv;
 }

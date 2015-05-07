@@ -74,7 +74,7 @@ class SvmTrain {
 
 		void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
 
-		step1_rv train_step1();
+		float* train_step1();
 
 		void train_step2(int I_hi, int I_lo, float alpha_hi, float alpha_lo);
 
