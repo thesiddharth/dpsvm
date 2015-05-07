@@ -21,6 +21,15 @@
 #include <vector>
 #include <iostream>
 
+typedef struct {
+
+	int I_hi;
+	int I_lo;
+	float b_hi;
+	float b_lo;
+
+} step1_rv;
+
 class SvmTrain {
 
 	private:
@@ -52,18 +61,22 @@ class SvmTrain {
 
 		int num_train_data;
 		int disp;
+		int start;
+		int end;
+		int matrix_start;
+		int matrix_end;
 
 	public:
-		
-		float b_lo;
-		float b_hi;
+	
 		float b;
 
 		SvmTrain(int n_data, int d);
 
 		void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
 
-		void train_step();
+		step1_rv train_step1();
+
+		void train_step2(int I_hi, int I_lo, float alpha_hi, float alpha_lo);
 
 		void init_cuda_handles();
 

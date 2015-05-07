@@ -17,5 +17,4 @@ typedef struct {
 
 //global structure for training parameters
 extern state_model state;
-
 #endif
