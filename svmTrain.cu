@@ -378,13 +378,13 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 			rv.f_1 = x.f_1;
 
 		}
-		else if (x.f_1 > y.f_1) {
+		else {//if (x.f_1 > y.f_1) {
 	
 			rv.I_1 = y.I_1;
 			rv.f_1 = y.f_1;
 
 		}
-		else {
+		/*else {
 
 			if(x.I_1 < y.I_1) {
 		
@@ -399,7 +399,7 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 	
 			}				
 
-		}
+		}*/
 
 
 
@@ -409,13 +409,13 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 			rv.f_2 = x.f_2;
 
 		}
-		else if(x.f_2 < y.f_2) {
+		else { // if(x.f_2 < y.f_2) {
 	
 			rv.I_2 = y.I_2;
 			rv.f_2 = y.f_2;
 
 		}
-		else {
+		/*else {
 
 			if(x.I_2 < y.I_2) {
 		
@@ -430,7 +430,7 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 	
 			}				
 
-		}
+		}*/
 		return rv; 
 	}
 };
@@ -439,8 +439,8 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 
 void SvmTrain::train_step() {
 
-	unsigned long long t1, t2;
-	t1 = CycleTimer::currentTicks();
+//	unsigned long long t1, t2;
+	//t1 = CycleTimer::currentTicks();
 
 	thrust::device_vector<i_helper>::iterator iter;
 	//float* iter;
@@ -449,9 +449,9 @@ void SvmTrain::train_step() {
  	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set.end(), last)),
        	             arbitrary_functor(state.c));
 
-	t2 = CycleTimer::currentTicks();
+	//t2 = CycleTimer::currentTicks();
 	//cout << "Calculate I1 and I2: " << t2 -t1 << "\n";
-	t1 = t2;	
+	//t1 = t2;	
 
 	//get b_hi and b_low
 	i_helper res = thrust::reduce(g_I_set.begin(), g_I_set.end(), init, my_maxmin());//, compare_mine());
@@ -469,9 +469,9 @@ void SvmTrain::train_step() {
 	//int I_hi = iter - g_I_set1.begin();
 	//b_hi = *iter;
 	
-	t2 = CycleTimer::currentTicks();
+	//t2 = CycleTimer::currentTicks();
 	//cout << "Calculate max and min: " << t2 -t1 << "\n";
-	t1 = t2;	
+	//t1 = t2;	
 
 
 	int y_lo = y[I_lo];
@@ -503,18 +503,18 @@ void SvmTrain::train_step() {
 	g_alpha[I_lo] = alpha_lo_new;
 	g_alpha[I_hi] = alpha_hi_new;
 
-	t2 = CycleTimer::currentTicks();
+	//t2 = CycleTimer::currentTicks();
 	//cout << "Eta and Alpha: " << t2 -t1 << "\n";
-	t1 = t2;	
+	//t1 = t2;	
 	//	t2 = CycleTimerr::currentTicks();
 	//	cout << "ALPHA UPDATE: " << t2-t1 << "\n";
 	//	t1 = t2;
 		//update f values
 	update_f(I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
 
-	t2 = CycleTimer::currentTicks();
+	//t2 = CycleTimer::currentTicks();
 	//cout << "Update f: " << t2 -t1 << "\n";
-	t1 = t2;	
+	//t1 = t2;	
 
 	///Increment number of iterations to reach stopping condition
 }

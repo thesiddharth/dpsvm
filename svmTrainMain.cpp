@@ -148,12 +148,12 @@ int main(int argc, char *argv[]) {
 	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
 	cout << "Populated Data from input file\n";
 
-	unsigned long long start;
-	start = CycleTimer::currentSeconds();
-
 	SvmTrain svm;
 
 	svm.setup(raw_x, raw_y);
+	
+	unsigned long long start;
+	start = CycleTimer::currentSeconds();
 
 	int num_iter = 0;
 
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 
 		num_iter++;
 
-		cout << num_iter << "\n";
+		//cout << num_iter << "\n";
 
 	} while((svm.b_lo > (svm.b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 	
