@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
 	MPI::COMM_WORLD.Barrier();
 
 	//timer for training
-	unsigned long long start;
+	unsigned long long start = 0;
 	if(rank == 0) {
 		start = CycleTimer::currentSeconds();
 	}
@@ -219,18 +219,15 @@ int main(int argc, char *argv[]) {
 	float *recv;
 
 	//alpha copies at root node, initialized to zero
-	float *alpha;
-	if(rank == 0) {
-		alpha = new float[state.num_train_data]();
+	float *alpha = new float[state.num_train_data]();
 
-		//assign receive buffers at root
-		I_lo = new int[cluster_size];
-		I_hi = new int[cluster_size];
-		f_lo = new float[cluster_size];
-		f_hi = new float[cluster_size];
+	//assign receive buffers at root
+	I_lo = new int[cluster_size];
+	I_hi = new int[cluster_size];
+	f_lo = new float[cluster_size];
+	f_hi = new float[cluster_size];
 
-		recv = new float[4*cluster_size];
-	}
+	recv = new float[4*cluster_size];
 
 	MPI::COMM_WORLD.Barrier();
 
@@ -242,95 +239,68 @@ int main(int argc, char *argv[]) {
 
 		float *rv = svm.train_step1();
 
-		//gather all local extremes at root
-		MPI::COMM_WORLD.Gather(rv, 4, MPI_FLOAT, recv, 4, MPI_FLOAT, 0);
+		//gather all local extremes at every node
+		MPI::COMM_WORLD.Allgather(rv, 4, MPI_FLOAT, recv, 4, MPI_FLOAT);
 
 		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
+			
+		float max = -1000000000;
+		float min = 1000000000;
+		int max_idx = 0;
+		int min_idx = 0;
 
-		if(rank == 0) {
+		//convert gathered array to separate arrays
+		for(int i=0; i<cluster_size; i++) {
+			int idx = i*4;
+			I_hi[i] = (int)recv[idx];
+			I_lo[i] = (int)recv[idx+1];
+			f_hi[i] = recv[idx+2];
+			f_lo[i] = recv[idx+3];
+		}
+
+		//obtain global maximas
+		for(int i=0; i<cluster_size; i++) {
+			if(f_lo[i] > max) {
+				max = f_lo[i];
+				max_idx = I_lo[i];
+			}
+
+			if(f_hi[i] < min) {
+				min = f_hi[i];
+				min_idx = I_hi[i];
+			}
+		}
+
+		b_lo = max;
+		b_hi = min;
+
+		int y_lo = raw_y[max_idx];
+		int y_hi = raw_y[min_idx];
+
+		float eta = svm.rbf_kernel(min_idx,min_idx) + svm.rbf_kernel(max_idx,max_idx) - (2*svm.rbf_kernel(max_idx,min_idx));
+
+		//obtain alpha_low and alpha_hi (old values)
+		float alpha_lo_old = alpha[max_idx];
+		float alpha_hi_old = alpha[min_idx];
+
+		//update alpha_low and alpha_hi
+		float s = y_lo*y_hi;
+		alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
+		alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
+
+		//clip new alpha values between 0 and C
+		alpha_lo_new = svm.clip_value(alpha_lo_new, 0.0, state.c);
+		alpha_hi_new = svm.clip_value(alpha_hi_new, 0.0, state.c);
+
+		//store new alpha_lo and alpha_hi values at root
+		alpha[max_idx] = alpha_lo_new;
+		alpha[min_idx] = alpha_hi_new;
+
+		I_lo_global = max_idx;
+		I_hi_global = min_idx;
 		
-			//cout << "Post gather: " << I_lo[0] << "," << I_hi[0] << "\n";
-			
-			float max = -1000000000;
-			float min = 1000000000;
-			int max_idx = 0;
-			int min_idx = 0;
-
-			//convert gathered array to separate arrays
-			for(int i=0; i<cluster_size; i++) {
-				int idx = i*4;
-				I_hi[i] = (int)recv[idx];
-				I_lo[i] = (int)recv[idx+1];
-				f_hi[i] = recv[idx+2];
-				f_lo[i] = recv[idx+3];
-			}
-
-			//obtain global maximas
-			for(int i=0; i<cluster_size; i++) {
-				if(f_lo[i] > max) {
-					max = f_lo[i];
-					max_idx = I_lo[i];
-				}
-
-				if(f_hi[i] < min) {
-					min = f_hi[i];
-					min_idx = I_hi[i];
-				}
-			}
-
-			b_lo = max;
-			b_hi = min;
-
-			int y_lo = raw_y[max_idx];
-			int y_hi = raw_y[min_idx];
-
-			float eta = svm.rbf_kernel(min_idx,min_idx) + svm.rbf_kernel(max_idx,max_idx) - (2*svm.rbf_kernel(max_idx,min_idx));
-
-			//obtain alpha_low and alpha_hi (old values)
-			float alpha_lo_old = alpha[max_idx];
-			float alpha_hi_old = alpha[min_idx];
-
-			//update alpha_low and alpha_hi
-			float s = y_lo*y_hi;
-			alpha_lo_new = alpha_lo_old + (y_lo*(b_hi - b_lo)/eta);
-			alpha_hi_new = alpha_hi_old + (s*(alpha_lo_old - alpha_lo_new));
-
-			//clip new alpha values between 0 and C
-			alpha_lo_new = svm.clip_value(alpha_lo_new, 0.0, state.c);
-			alpha_hi_new = svm.clip_value(alpha_hi_new, 0.0, state.c);
-
-			//store new alpha_lo and alpha_hi values at root
-			alpha[max_idx] = alpha_lo_new;
-			alpha[min_idx] = alpha_hi_new;
-
-			I_lo_global = max_idx;
-			I_hi_global = min_idx;
-			
-			//cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
-		}
-
-		//Broadcast global values to all proecesses
-		float *send_globals = new float[6];
-		if(rank == 0) {
-			send_globals[0] = (float)I_lo_global;
-			send_globals[1] = (float)I_hi_global;
-			send_globals[2] = alpha_lo_new;
-			send_globals[3] = alpha_hi_new;
-			send_globals[4] = b_lo;
-			send_globals[5] = b_hi;
-		}
-
-		MPI::COMM_WORLD.Bcast(send_globals, 6, MPI_FLOAT, 0);
-
-		I_lo_global = (int)send_globals[0];
-		I_hi_global = (int)send_globals[1];
-		alpha_lo_new = send_globals[2];
-		alpha_hi_new = send_globals[3];
-		b_lo = send_globals[4];
-		b_hi = send_globals[5];
-
-		delete [] send_globals;
+		//cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
 
 		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
