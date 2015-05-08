@@ -21,6 +21,21 @@
 #include <vector>
 #include <iostream>
 
+struct i_h_def{
+
+	int I_1;
+	int I_2;
+	float f_1;
+	float f_2;
+
+	//i_h_def () : I_1(-1), I_2(-1), f_1(1000000000), f_2(-1000000000) {}
+	
+	//i_h_def (float f1, float f2) : I_1(-1), I_2(-1), f_1(f1), f_2(f2) {}
+
+};
+
+typedef struct i_h_def i_helper;
+
 class SvmTrain {
 
 private:
@@ -40,7 +55,13 @@ private:
 	
  
 	thrust::device_vector<float> g_x_sq;
+	
+	thrust::counting_iterator<int> first;
+	thrust::counting_iterator<int> last;
 
+	thrust::device_vector<i_helper> g_I_set;
+
+	i_helper init;
 	float* raw_g_x;
 
 	cublasHandle_t handle;

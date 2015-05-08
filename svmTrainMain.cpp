@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 
 		num_iter++;
 
-		//	cout << "--------------------------------\n";
+		cout << num_iter << "\n";
 
 	} while((svm.b_lo > (svm.b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 	

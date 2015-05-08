@@ -6,7 +6,6 @@
 #include <cuda.h>
 #include <cblas.h>
 
-#include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 #include <thrust/copy.h>
 #include <thrust/fill.h>
