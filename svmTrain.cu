@@ -348,6 +348,8 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 
 	raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
 	
+	cout << "DONE OLDER SETUP \n";
+	
 	//Set up I_set1 and I_set2
 	init.I_1 = -1;
 	init.I_2 = -1;
@@ -360,6 +362,7 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	last = first + state.num_train_data;
 	//thrust::device_vector<float> g_I_set2(state.num_train_data, -1000000000);
 
+	cout << "DONE SETUP \n";
 
 }
 //	t2 = CycleTimerr::currentTicks();
@@ -439,12 +442,11 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 
 void SvmTrain::train_step() {
 
-//	unsigned long long t1, t2;
+//	unsigned long long t1=0, t2=0;
 	//t1 = CycleTimer::currentTicks();
 
-	thrust::device_vector<i_helper>::iterator iter;
-	//float* iter;
-	
+	//cout <<"ENTERED STEP!\n"; 
+
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set.begin(), first)),
  	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set.end(), last)),
        	             arbitrary_functor(state.c));
