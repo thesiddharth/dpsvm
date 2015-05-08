@@ -388,6 +388,7 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	
 	first = thrust::counting_iterator<int>(start);
 	last = first + num_train_data;
+
 }
 //	t2 = CycleTimer::currentTicks();
 	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
@@ -398,6 +399,7 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
    __host__ __device__
    i_helper operator()(i_helper x, i_helper y) { 
 		i_helper rv;//(fminf(x.I_1, y.I_1), fmaxf(x.I_2, y.I_2));
+		
 		if(x.f_1 < y.f_1) {
 			
 			rv.I_1 = x.I_1;
@@ -462,20 +464,19 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 };
 
 void SvmTrain::train_step1() {
-
+	
 	//Set up I_set1 and I_set2
-	thrust::device_vector<i_helper>::iterator iter;
-		
 	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin() + start, g_y.begin(), g_f.begin(), g_I_set.begin(), first)),
- 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end() + end, g_y.end(), g_f.end(), g_I_set.end(), last)),
+ 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin() + end, g_y.end(), g_f.end(), g_I_set.end(), last)),
        	             arbitrary_functor(state.c));
 
-	i_helper res = thrust::reduce(g_I_set.begin(), g_I_set.end(), init, my_maxmin());
+	i_helper res  = thrust::reduce(g_I_set.begin(), g_I_set.end(), init, my_maxmin());
 
 	rv[0] = res.I_1;
 	rv[1] = res.I_2;
 	rv[2] = res.f_1;
 	rv[3] = res.f_2;
+
 }
 
 void SvmTrain::train_step2(int I_hi, int I_lo, float alpha_hi_new, float alpha_lo_new) {
