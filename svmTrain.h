@@ -34,6 +34,8 @@ struct i_h_def{
 
 };
 
+typedef struct i_h_def i_helper;
+
 typedef struct {
 
 	int I_hi;
@@ -81,10 +83,11 @@ class SvmTrain {
 		int matrix_start;
 		int matrix_end;
 	
-		float* rv;
+		i_helper init;
 
 	public:
 	
+		float* rv;
 		float b;
 
 		SvmTrain(int n_data, int d);

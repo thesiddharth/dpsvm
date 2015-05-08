@@ -335,52 +335,52 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	x = thrust::host_vector<float>(raw_x);
 	y = thrust::host_vector<int>(raw_y);
 
-	cout << "PRE X COPY: \n";
+	//cout << "PRE X COPY: \n";
  
 	//Copy x and y to device
 	g_x = thrust::device_vector<float>(x.begin(), x.end()) ;
 	
-	cout << "POST X COPY: \n";
+	//cout << "POST X COPY: \n";
 	
 	//Initialize alpha on device
 	g_alpha = thrust::device_vector<float>(state.num_train_data, 0);
 	
-	cout << "POST ALPHA: \n";
+	//cout << "POST ALPHA: \n";
 	
 	init_cuda_handles();
 	
-	cout << "POST HANDLE INIT: \n";
+	//cout << "POST HANDLE INIT: \n";
 	
 	g_x_sq = thrust::device_vector<float>(state.num_train_data);
 	
-	cout << "POST X_SQ: \n";
+	//cout << "POST X_SQ: \n";
 	
 	for( int i = 0; i < state.num_train_data; i++ )
 	{
 		g_x_sq[i] = thrust::inner_product(&g_x[i*state.num_attributes], &g_x[i*state.num_attributes] + state.num_attributes, &g_x[i*state.num_attributes], 0.0f);
 	}
 	
-	cout << "POST X_SQ INIT: \n";
+	//cout << "POST X_SQ INIT: \n";
 
 	raw_g_x = thrust::raw_pointer_cast(&g_x[0]);
 	
-	cout << "POST G_X: \n";
+	//cout << "POST G_X: \n";
 	
 	//ONLY THE FOLLOWING USE INFO PERTAINING TO THIS PARTICULAR SPLIT
 	
 	g_y = thrust::device_vector<int>(y.begin()+start, y.begin()+end);
 
-	cout << "POST G_Y: \n";
+	//cout << "POST G_Y: \n";
 	
 	// Initialize f on device
 	g_f  = thrust::device_vector<float>(num_train_data);
 	thrust::transform(g_y.begin(), g_y.end(), g_f.begin(), thrust::negate<float>());
 	
-	cout << "POST G_F INIT: \n";
+	//cout << "POST G_F INIT: \n";
 	
 	lineCache = new myCache(state.cache_size, num_train_data);
 	
-	cout << "POST LINECACHE: \n";
+	//cout << "POST LINECACHE: \n";
 	
 	rv = new float[4];
 	
@@ -466,29 +466,16 @@ void SvmTrain::train_step1() {
 	//Set up I_set1 and I_set2
 	thrust::device_vector<i_helper>::iterator iter;
 		
-	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set.begin(), first)),
- 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set.end(), last)),
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin() + start, g_y.begin(), g_f.begin(), g_I_set.begin(), first)),
+ 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end() + end, g_y.end(), g_f.end(), g_I_set.end(), last)),
        	             arbitrary_functor(state.c));
 
 	i_helper res = thrust::reduce(g_I_set.begin(), g_I_set.end(), init, my_maxmin());
 
-	int I_lo = res.I_2;
-	int I_hi = res.I_1;	
-	b_lo = res.f_2;
-	b_hi = res.f_1;
-	
-	//get b_hi and b_low
-	iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
-
-	rv[1] = res.I_2;
-	rv[3] = res.f_2;
-
-	iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
-
 	rv[0] = res.I_1;
-	rv[2] = res.f_2;
-
-	return rv;
+	rv[1] = res.I_2;
+	rv[2] = res.f_1;
+	rv[3] = res.f_2;
 }
 
 void SvmTrain::train_step2(int I_hi, int I_lo, float alpha_hi_new, float alpha_lo_new) {

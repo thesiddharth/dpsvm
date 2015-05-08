@@ -190,17 +190,16 @@ int main(int argc, char *argv[]) {
 
 	//SVM class initialization (locl to every process)
 	SvmTrain svm(shard_size[rank], shard_disp[rank]);
-	
-	if(rank == 0) {
-
-		cout << "PRE SETUP\n";
-
-	}
-	
+		
 	svm.setup(raw_x, raw_y);
 
 	MPI::COMM_WORLD.Barrier();
 
+	if(rank == 0) {
+
+		cout << "SETUP DONE\n";
+
+	}
 	//timer for training
 	unsigned long long start = 0;
 	if(rank == 0) {
@@ -233,14 +232,14 @@ int main(int argc, char *argv[]) {
 
 	do {
 
-		/*if(rank == 0) {
+		if(rank == 0) {
 			cout << "Iteration: " << num_iter << "\n";	
-		}*/
+		}
 
-		float *rv = svm.train_step1();
+		svm.train_step1();
 
 		//gather all local extremes at every node
-		MPI::COMM_WORLD.Allgather(rv, 4, MPI_FLOAT, recv, 4, MPI_FLOAT);
+		MPI::COMM_WORLD.Allgather(svm.rv, 4, MPI_FLOAT, recv, 4, MPI_FLOAT);
 
 		int I_lo_global, I_hi_global;
 		float alpha_lo_new, alpha_hi_new;
@@ -258,6 +257,16 @@ int main(int argc, char *argv[]) {
 			f_hi[i] = recv[idx+2];
 			f_lo[i] = recv[idx+3];
 		}
+
+		//if (rank == 0) {
+
+		//	for(int i = 0; i < cluster_size; i++) {
+
+		//		cout << I_hi[i] << "," << I_lo[i] << ":" << f_hi[i] << "," << f_lo[i] << "\n";
+
+		//	}
+
+		//}
 
 		//obtain global maximas
 		for(int i=0; i<cluster_size; i++) {
@@ -300,8 +309,13 @@ int main(int argc, char *argv[]) {
 		I_lo_global = max_idx;
 		I_hi_global = min_idx;
 		
-		//cout << "Post Root computations " << I_lo_global << "," << I_hi_global << "\n" ;
 
+		//if(rank == 0) {
+			
+		//		cout << "Post Root computations " << I_hi_global << "," << I_lo_global << "\n" ;
+
+		//}
+		
 		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
 
