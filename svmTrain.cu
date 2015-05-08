@@ -46,42 +46,48 @@ struct arbitrary_functor
     __host__ __device__
     void operator()(Tuple t)
     {
+
+		thrust::get<3>(t).I_1 = thrust::get<3>(t).I_2 = thrust::get<4>(t);
+		//i_helper new;
         // I_set[i] = Alpha[i],  Y[i] , f[i], I_set1[i], I_set2[i];
 		if(thrust::get<0>(t) == 0) {
 		
 			if(thrust::get<1>(t) == 1) {
 			
-				
-				thrust::get<3>(t) = thrust::get<2>(t);
-				
+				thrust::get<3>(t).f_1 = thrust::get<2>(t); 
+				thrust::get<3>(t).f_2 = -1000000000; 	
 			}
 			
 			else {
 				
-				thrust::get<4>(t) = thrust::get<2>(t);
-				
+				thrust::get<3>(t).f_2 = thrust::get<2>(t); 
+				thrust::get<3>(t).f_1 = 1000000000;
+					
 			}
 
 		}	else if(thrust::get<0>(t) == C) {
 		
 			if(thrust::get<1>(t) == -1) {
 			
-				thrust::get<3>(t) = thrust::get<2>(t);
+				thrust::get<3>(t).f_1 = thrust::get<2>(t); 
+				thrust::get<3>(t).f_2 = -1000000000; 	
 				
 			}
 			
 			else {
 				
-				thrust::get<4>(t) = thrust::get<2>(t);
+				thrust::get<3>(t).f_2 = thrust::get<2>(t); 
+				thrust::get<3>(t).f_1 = 1000000000;
 				
 			}
 
 		}	else {
 		
-			thrust::get<3>(t) = thrust::get<2>(t);
-			thrust::get<4>(t) = thrust::get<2>(t);
+				thrust::get<3>(t).f_1 = thrust::get<3>(t).f_2 = thrust::get<2>(t); 
 			
 		}
+
+		
 	}
 };
 
@@ -299,6 +305,11 @@ SvmTrain::SvmTrain(int n_data, int d) {
 	end = d+n_data;
 	matrix_start = start*state.num_attributes;
 	matrix_end = end*state.num_attributes;
+
+	init.I_1 = -1;
+	init.I_2 = -1;
+	init.f_1 = 1000000000;
+	init.f_2 = -1000000000;
 }
 
 
@@ -371,45 +382,111 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
 	
 	cout << "POST LINECACHE: \n";
 	
+	rv = new float[4];
+	
+	g_I_set = thrust::device_vector<i_helper>(num_train_data);
+	
+	first = thrust::counting_iterator<int>(start);
+	last = first + num_train_data;
 }
 //	t2 = CycleTimer::currentTicks();
 	//cout << "POST INIT, PRE G_X_SQ CALC: " << t2 - t1 << "\n";
 //	t1 = t2;
 
+struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> { 
 
-float* SvmTrain::train_step1() {
+   __host__ __device__
+   i_helper operator()(i_helper x, i_helper y) { 
+		i_helper rv;//(fminf(x.I_1, y.I_1), fmaxf(x.I_2, y.I_2));
+		if(x.f_1 < y.f_1) {
+			
+			rv.I_1 = x.I_1;
+			rv.f_1 = x.f_1;
 
-	thrust::device_vector<float>::iterator iter;
-	//float* iter;
+		}
+		else {//if (x.f_1 > y.f_1) {
+	
+			rv.I_1 = y.I_1;
+			rv.f_1 = y.f_1;
+
+		}
+		/*else {
+
+			if(x.I_1 < y.I_1) {
+		
+				rv.I_1 = x.I_1;
+				rv.f_1 = x.f_1;
+
+			}
+			else {
+			
+				rv.I_1 = y.I_1;
+				rv.f_1 = y.f_1;
+	
+			}				
+
+		}*/
+
+
+
+		if(x.f_2 > y.f_2) {
+			
+			rv.I_2 = x.I_2;
+			rv.f_2 = x.f_2;
+
+		}
+		else { // if(x.f_2 < y.f_2) {
+	
+			rv.I_2 = y.I_2;
+			rv.f_2 = y.f_2;
+
+		}
+		/*else {
+
+			if(x.I_2 < y.I_2) {
+		
+				rv.I_2 = x.I_2;
+				rv.f_2 = x.f_2;
+
+			}
+			else {
+			
+				rv.I_2 = y.I_2;
+				rv.f_2 = y.f_2;
+	
+			}				
+
+		}*/
+		return rv; 
+	}
+};
+
+void SvmTrain::train_step1() {
 
 	//Set up I_set1 and I_set2
-	thrust::device_vector<float> g_I_set1(num_train_data, 1000000000);
-	thrust::device_vector<float> g_I_set2(num_train_data, -1000000000);
+	thrust::device_vector<i_helper>::iterator iter;
 		
-	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin()+start, g_y.begin(), g_f.begin(), g_I_set1.begin(), g_I_set2.begin())),
- 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin()+end, g_y.end(), g_f.end(), g_I_set1.end(), g_I_set2.end())),
+	thrust::for_each(thrust::make_zip_iterator(thrust::make_tuple(g_alpha.begin(), g_y.begin(), g_f.begin(), g_I_set.begin(), first)),
+ 	                 thrust::make_zip_iterator(thrust::make_tuple(g_alpha.end(), g_y.end(), g_f.end(), g_I_set.end(), last)),
        	             arbitrary_functor(state.c));
+
+	i_helper res = thrust::reduce(g_I_set.begin(), g_I_set.end(), init, my_maxmin());
+
+	int I_lo = res.I_2;
+	int I_hi = res.I_1;	
+	b_lo = res.f_2;
+	b_hi = res.f_1;
 	
 	//get b_hi and b_low
 	iter = thrust::max_element(g_I_set2.begin(), g_I_set2.end());//, compare_mine());
 
-	float* rv = new float[4];
-
-	//rv.I_lo = (iter - g_I_set2.begin()) + start;
-	//rv.b_lo = *iter;
-	
-	rv[1] = (iter - g_I_set2.begin()) + start;
-	rv[3] = *iter;
-
-	//cout << "I_lo: \t" << I_lo << ", b_lo: \t" << b_lo << '\n';
+	rv[1] = res.I_2;
+	rv[3] = res.f_2;
 
 	iter = thrust::min_element(g_I_set1.begin(), g_I_set1.end());
 
-	//rv.I_hi = (iter - g_I_set1.begin()) + start;
-	//rv.b_hi = *iter;
-	
-	rv[0] = (iter - g_I_set1.begin()) + start;
-	rv[2] = *iter;
+	rv[0] = res.I_1;
+	rv[2] = res.f_2;
 
 	return rv;
 }

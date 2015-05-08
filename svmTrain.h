@@ -21,6 +21,19 @@
 #include <vector>
 #include <iostream>
 
+struct i_h_def{
+
+	int I_1;
+	int I_2;
+	float f_1;
+	float f_2;
+
+	//i_h_def () : I_1(-1), I_2(-1), f_1(1000000000), f_2(-1000000000) {}
+	
+	//i_h_def (float f1, float f2) : I_1(-1), I_2(-1), f_1(f1), f_2(f2) {}
+
+};
+
 typedef struct {
 
 	int I_hi;
@@ -39,16 +52,18 @@ class SvmTrain {
 
 		thrust::device_vector<float> g_x;
 		thrust::device_vector<int> g_y;
-		
-		thrust::device_vector<float> g_x_hi;
-		thrust::device_vector<float> g_x_lo;
-		
+			
 		thrust::device_vector<float> g_f;
 
 		thrust::device_vector<float> g_alpha;
 		
 	 
 		thrust::device_vector<float> g_x_sq;
+	
+		thrust::counting_iterator<int> first;
+		thrust::counting_iterator<int> last;
+
+		thrust::device_vector<i_helper> g_I_set;
 
 		float* raw_g_x;
 
@@ -65,6 +80,8 @@ class SvmTrain {
 		int end;
 		int matrix_start;
 		int matrix_end;
+	
+		float* rv;
 
 	public:
 	
@@ -74,7 +91,7 @@ class SvmTrain {
 
 		void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
 
-		float* train_step1();
+		void train_step1();
 
 		void train_step2(int I_hi, int I_lo, float alpha_hi, float alpha_lo);
 
