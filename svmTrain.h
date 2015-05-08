@@ -46,9 +46,6 @@ private:
 	thrust::device_vector<float> g_x;
 	thrust::device_vector<int> g_y;
 	
-	thrust::device_vector<float> g_x_hi;
-	thrust::device_vector<float> g_x_lo;
-	
 	thrust::device_vector<float> g_f;
 
 	thrust::device_vector<float> g_alpha;
