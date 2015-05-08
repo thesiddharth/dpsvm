@@ -236,9 +236,9 @@ int main(int argc, char *argv[]) {
 
 	do {
 
-		if(rank == 0) {
+		/*if(rank == 0) {
 			cout << "Iteration: " << num_iter << "\n";	
-		}
+		}*/
 
 		float *rv = svm.train_step1();
 
@@ -329,6 +329,8 @@ int main(int argc, char *argv[]) {
 		alpha_hi_new = send_globals[3];
 		b_lo = send_globals[4];
 		b_hi = send_globals[5];
+
+		delete [] send_globals;
 
 		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
