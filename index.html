@@ -133,7 +133,7 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>REFERENCE:</strong> Speedup achieved using single Tesla C1060
+						<strong>REFERENCE:</strong> Speedup achieved using a single Tesla C1060 and an Intel Core i7-920 2.67 GHz CPU
 						<sup>[2]</sup>
 					</p>
 				</td>
@@ -171,22 +171,21 @@
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						Too large for LibSVM,
-					</p>
-					<p dir="ltr">
-						Runtime: 651s
+						(Note: 500,000 point subset of training data used) <br>
+						Too large for LibSVM, <br>
+						Runtime: 651 s.
 					</p>
 				</td>
 			</tr>
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>RESULT:</strong> Our Implementation on LATEDAYS (1 Tesla K40 on every node)
+						<strong>RESULT:</strong> Our Implementation on LATEDAYS: 1 Tesla K40 on every node, CPU-based LibSVM times taken from [3] 
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						<strong>24x</strong>
+						<strong>24x</strong> (1 GPU)
 					</p>
 				</td>
 				<td class="info_column">
@@ -196,7 +195,8 @@
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						<strong>591 sec.</strong> (1 GPU)
+						(Note: Full, 581,012 dataset used.) <br>
+						<strong>591 s.</strong> (10 GPUs)
 					</p>
 				</td>
 			</tr>
@@ -264,7 +264,9 @@
 <p dir="ltr">
 	<sup>[4]</sup> http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/distributed-liblinear/
 </p>
-
+<p dir="ltr">
+	<sup>[5]</sup> B. Catanzaro, N. Sundaram, and K. Keutzer. Fast support vector machine training and classification on graphics processors. In ICML ’08: Proceedings of the 25th international conference on Machine learning, pages 104–111, New York, NY, USA, 2008. ACM.
+</p>
 
 </body>
 </html>
