@@ -24,20 +24,20 @@ static void usage_exit() {
 "   Command Line:\n"
 "\n"
 "   -a/--num-att        :  [REQUIRED] The number of attributes\n"
-"									  /features\n"
-"   -x/--num-ex       	:  [REQUIRED] The number of training \n"
-"									  examples\n"
+"                                     /features\n"
+"   -x/--num-ex         :  [REQUIRED] The number of training \n"
+"                                     examples\n"
 "   -f/--file-path      :  [REQUIRED] Path to the training file\n"
-"   -c/--cost        	:  Parameter c of the SVM (default 1)\n"
-"   -g/--gamma       	:  Parameter gamma of the radial basis\n"
-"						   function: exp(-gamma*|u-v|^2)\n"
-"						   (default: 1/num-att)"
+"   -c/--cost           :  Parameter c of the SVM (default 1)\n"
+"   -g/--gamma          :  Parameter gamma of the radial basis\n"
+"                          function: exp(-gamma*|u-v|^2)\n"
+"                          (default: 1/num-att)\n"
 "   -e/--epsilon        :  Tolerance of termination criterion\n"
-"						   (default 0.001)"
-"	-n/--max-iter		:  Maximum number of iterations\n"
-"						   (default 150,000"
-"	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
-"	-s/--cache-size		:  Size of cache (num cache lines)\n"
+"                          (default 0.001)\n"
+"   -n/--max-iter       :  Maximum number of iterations\n"
+"                          (default 150,000\n"
+"   -m/--model          :  [REQUIRED] Path of model to be saved\n"
+"   -s/--cache-size     :  Size of cache (num cache lines)\n"
 "\n";
     
 	exit(-1);
@@ -260,16 +260,6 @@ int main(int argc, char *argv[]) {
 			f_lo[i] = recv[idx+3];
 		}
 
-		//if (rank == 0) {
-
-		//	for(int i = 0; i < cluster_size; i++) {
-
-		//		cout << I_hi[i] << "," << I_lo[i] << ":" << f_hi[i] << "," << f_lo[i] << "\n";
-
-		//	}
-
-		//}
-
 		//obtain global maximas
 		for(int i=0; i<cluster_size; i++) {
 			if(f_lo[i] > max) {
@@ -310,13 +300,6 @@ int main(int argc, char *argv[]) {
 
 		I_lo_global = max_idx;
 		I_hi_global = min_idx;
-		
-
-		//if(rank == 0) {
-			
-		//		cout << "Post Root computations " << I_hi_global << "," << I_lo_global << "\n" ;
-
-		//}
 		
 		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
@@ -368,12 +351,13 @@ int main(int argc, char *argv[]) {
 	}
 
 	//clear training data
-	//for(int i = 0 ; i < state.num_train_data; i++) {	
-	//	delete [] x[i];
-	//}
+	raw_x.clear();
+	raw_y.clear();
 
-	//delete [] x;
-	//delete [] y;
+	raw_x.shrink_to_fit();
+	raw_y.shrink_to_fit();
+
+	delete [] alpha;
 
 	MPI::Finalize();
 
