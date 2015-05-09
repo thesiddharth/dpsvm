@@ -442,7 +442,6 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 };
 
 
-
 void SvmTrain::train_step() {
 
 //	unsigned long long t1=0, t2=0;
@@ -589,7 +588,7 @@ struct test_functor : public thrust::unary_function<float,Tuple> {
 
 void SvmTrain::test_setup() {
 
-	g_alpha_c = g_alpha;
+	g_alpha_c = thrust::device_vector<float>(g_alpha);
 	g_y_c = g_y;
 	g_x_sq_c = g_x_sq;
 
@@ -597,14 +596,7 @@ void SvmTrain::test_setup() {
 
 	thrust::sequence(g_sv_indices.begin(), g_sv_indices.end());
 
-	cout << "Allocated!\n";
-	//exit(0);
-/////////////////
-
 	aggregate_sv();
-
-////////////////////	
-	cout << "Aggregated!\n";
 
 	g_t_dp = thrust::device_vector<float>(new_size);
 	raw_g_t_dp = thrust::raw_pointer_cast(&g_t_dp[0]);
@@ -618,7 +610,6 @@ void SvmTrain::test_setup() {
 		exit(EXIT_FAILURE); 
 	}
 
-
 }
 
 
@@ -631,13 +622,12 @@ void SvmTrain::aggregate_sv() {
 					  - thrust::make_zip_iterator(thrust::make_tuple(g_alpha_c.begin(), g_y_c.begin(), 
 																	g_x_sq_c.begin(), g_sv_indices.begin()));
 
-	cout << "Done: " << new_size << "\n!";
-	
 	g_alpha_c.resize(new_size);
 	g_y_c.resize(new_size);
 	g_x_sq_c.resize(new_size);
 	g_sv_indices.resize(new_size);	
 	
+
 	thrust::host_vector<int> temp_indices = g_sv_indices; 
 	thrust::host_vector<float> temp_x(new_size * state.num_attributes);
 
@@ -659,31 +649,37 @@ void SvmTrain::aggregate_sv() {
 
 }
 
+struct my_sum : public thrust::binary_function<float, float, float> { 
+
+   	__host__ __device__
+   	float operator()(float x, float y) { 
+		
+		return x+y;		
+
+	}
+
+};
 
 float SvmTrain::get_train_accuracy() {
 	int num_correct = 0;
 
-	//thrust::host_vector<float> alpha = g_alpha; 
-	//float* raw_alpha = thrust::raw_pointer_cast(&alpha[0]);
 	
 	for(int i=0; i<state.num_train_data; i++) {
-		cout << "Iter: " << i << "\n";
 
-		cublasSgemv(t_handle, CUBLAS_OP_T, state.num_attributes, new_size, &alpha, &raw_g_x_c[0], state.num_attributes, &raw_g_x[i * state.num_attributes], 1, &beta, raw_g_t_dp, 1 );
 	
+		cublasSgemv(t_handle, CUBLAS_OP_T, state.num_attributes, new_size, &alpha, &raw_g_x_c[0], state.num_attributes, &raw_g_x[i * state.num_attributes], 1, &beta, raw_g_t_dp, 1 );
+
 
 		float i_sq = g_x_sq[i];
 
-		float dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
+	
+		float dual = 0;
+
+		dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
-       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0, thrust::plus<float>());
+       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, my_sum());
 		
 
-		//dual += y[j]*raw_alpha[j]*rbf_kernel(j,i);
-		//	}
-		//}
-
-		dual += b;
 
 		int result = 1;
 		if(dual < 0) {
