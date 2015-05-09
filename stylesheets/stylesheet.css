@@ -449,3 +449,17 @@ sup {font-size:x-small; vertical-align:super; font-weight: bold;}
 {
 	width:30%;
 }
+
+div {
+    text-align: justify;
+}
+
+div img {
+    display: inline-block;
+}
+
+div:after {
+    content: '';
+    display: inline-block;
+    width: 100%;
+}
