@@ -4,7 +4,7 @@
   <head>
     <meta charset='utf-8'>
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <meta name="description" content="Svm-legion : A distributed implementation of Support Vector Machines using OpenMPI and CUDA">
+    <meta name="description" content="DPSVM : A distributed implementation of Support Vector Machines using OpenMPI and CUDA">
 
     <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
 
@@ -46,15 +46,10 @@
 <a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
 
 <p dir="ltr">
-	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. Platt originally proposed the SMO technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
-</p>
-
-<p dir="ltr">
-	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset. Each update step involves the computation of the modified inner products of two training data input vectors (the kernel trick), which is computationally intensive over the set of all training data. We aim to implement a parallel SMO algorithm which distributes the task of training over different nodes as proposed by Cao et. al. <sup>[1]</sup>, and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.
+	The Support Vector Machine (<strong>SVM</strong>) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem. This QP is solved iteratively, where each update step involves the computation of the modified inner products of two training data input vectors (the <strong>kernel</strong> trick), which is computationally intensive over the set of all training data.
 </p>
 <p dir="ltr">
-	The parallel calculation of error terms and updates of the Lagrangian multipliers will (ideally) scale with the number of sub processes, and
-	allow for the use of parallel reduction with low communication overheads for global constants. We are using OpenMPI and CUDA to create a portable, high-performance implementation that leverages distributed environments.
+	We implement a parallel SMO algorithm which distributes the task of training over different nodes, as proposed by Cao et. al. <sup>[1]</sup> and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology. We are using OpenMPI and CUDA to create a portable, high-performance implementation that leverages distributed environments.
 </p>
 <br/>
 <p dir="ltr" class="centeredImage">
