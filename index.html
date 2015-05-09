@@ -22,7 +22,7 @@
           <h2 id="project_tagline">Distributed Support Vector Machine training using OpenMPI and CUDA</h2>
 
 			<section> <h5>
-              <a href="http://thesiddharth.github.io/dpsvm/checkpoint.html"> Project Checkpoint </a>
+              <a href="http://thesiddharth.github.io/dpsvm/checkpoint.html"> Project Checkpoint </a> || <a href="http://thesiddharth.github.io/dpsvm/proposal.html"> Proposal </a>
             </h5> </section>
 		  
             <section id="downloads">
@@ -39,7 +39,7 @@
 <a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
 
 <p dir="ltr">
-	We are going to implement a distributed, parallel Support Vector Machine training algorithm for binary classification using the OpenMPI library and the CUDA parallel programming model. We plan to do this by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and distributing the parallelism over GPUs in a cluster.
+	We have implemented a distributed and parallel <strong>Support Vector Machine</strong> training algorithm for binary classification using the <strong>OpenMPI</strong> library and the <strong>CUDA</strong> parallel programming model. We parallelize the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and distribute the parallelism over <strong>GPUs</strong> in a cluster.
 </p>
 
 <h3>
@@ -64,10 +64,10 @@
 <br/>
 
 <h3>
-<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenge</h3>
+<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenges</h3>
 
 <p dir="ltr">
-	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that minimizes communication overheads between:
+	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that <strong><em>minimizes communication</em></strong> overheads between:
 </p>
 <ol>
 	<li dir="ltr">
@@ -81,9 +81,6 @@
 		</p>
 	</li>
 </ol>
-<p dir="ltr">
-	This is exacerbated by the fact that our team has only a basic understanding of SVM theory and the SMO algorithm, and will need to do a thorough literature review to get a firm grasp on the concepts required.
-</p>
 
 <p dir="ltr">
 	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
@@ -91,8 +88,7 @@
 <ol>
 	<li dir="ltr">
 		<p dir="ltr">
-			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the kernel
-			computation, which is a SGEMV matrix operation).
+			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the <strong><em>kernel computation</em></strong>, which is a SGEMV matrix operation).
 		</p>
 	</li>
 	<li dir="ltr">
@@ -102,27 +98,32 @@
 	</li>
 </ol>
 <p dir="ltr">
-	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there
-	exist even more complex datasets <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
+	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there exist even more <strong><em>complex datasets</em></strong> <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
 </p>
 
-
-<h3>
-<a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Resources</h3>
+<h3><a id="results" class="anchor" href="#results" aria-hidden="true"><span class="octicon octicon-link"></span></a>Results</h3>
 
 <p dir="ltr">
-	We will be using the latedays cluster for running the system, using OpenMPI as the Message Passing Interface to distribute the data across different nodes. We hope to leverage parallelism primarily across the GPU devices in the cluster.
+	We have currently implemented a version, which distributes the training over multiple GPUs using OpenMPI. This version has been profiled with popular datasets such as <strong>MNIST</strong> and <strong>Forest Covertype</strong> (Asuncion &amp; Newman, 2007), which require a large no. of iterations to converge.
 </p>
 
-<p dir="ltr">
-	We are building upon the pseudo code provided for the parallel SMO algorithm, which uses OpenMPI to distribute computation across nodes by Cao et. al.<sup>[1]</sup> And we aim to start with the basic division of work across GPUs as described by Herrero-Lopez et. al.<sup>[2]</sup> in their implementation.
-</p>    
+<p dir="ltr" class="centeredImage">
+	<img
+	src="images/mnist.png" width="556px;" height="401px;"/>
+</p>
+<br/>
+
+<p dir="ltr" class="centeredImage">
+	<img
+	src="images/covertype.png" width="556px;" height="401px;"/>
+</p>
+<br/>    
 
   <h3>
 <a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
 
 <p dir="ltr">
-	Plan to achieve:
+	<strong><em>CURRENT STATUS:</em></strong>
 </p>
 
 <ul>
@@ -138,7 +139,7 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Achieve the following training speedups over LibSVM (expected):
+			Achieved the following training speedups over LibSVM:
 		</p>
 	</li>
 </ul>
@@ -148,7 +149,6 @@
 		<colgroup>
 			<col width="143"/>
 			<col width="141"/>
-			<col width="113"/>
 			<col width="101"/>
 			<col width="*"/>
 		</colgroup>
@@ -159,40 +159,30 @@
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						Adult
+						<strong>Adult</strong>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						Web
+						<strong>MNIST (Even vs Odd)</strong>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						Mnist (Even vs Odd)
-					</p>
-				</td>
-				<td class="info_column">
-					<p dir="ltr">
-						Covertype
+						<strong>Covertype</strong>
 					</p>
 				</td>
 			</tr>
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						Speedup achieved using single Tesla C1060
+						<strong>REFERENCE:</strong> Speedup achieved using single Tesla C1060
 						<sup>[2]</sup>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
 						10.45x
-					</p>
-				</td>
-				<td class="info_column">
-					<p dir="ltr">
-						14.97x
 					</p>
 				</td>
 				<td class="info_column">
@@ -209,17 +199,12 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						Speedup achieved using chunking algorithm and threeTesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
+						<strong>REFERENCE:</strong> Speedup achieved using chunking algorithm and threeTesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
 						19.38x
-					</p>
-				</td>
-				<td class="info_column">
-					<p dir="ltr">
-						42.89x
 					</p>
 				</td>
 				<td class="info_column">
@@ -239,27 +224,22 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						Speedup expected in our implementation on latedays (which has 1 Tesla K40 on each machine)
+						<strong>RESULT:</strong> Our Implementation on LATEDAYS (1 Tesla K40 on every node)
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						~10x (High communication-to-computation overhead)
+						<strong>24x</strong>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						~35x
+						<strong>124x</strong> (1 GPU) - <strong>531x</strong> (10 GPUs)
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						~120x
-					</p>
-				</td>
-				<td class="info_column">
-					<p dir="ltr">
-						&lt; 600s
+						<strong>591 sec.</strong> (1 GPU)
 					</p>
 				</td>
 			</tr>
@@ -268,7 +248,7 @@
 </div>
 
 <p dir="ltr">
-	Hope to achieve:
+	<strong><em>Hope to achieve (by 11 May):</em></strong>
 </p>
 
 <ul>
@@ -279,7 +259,7 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Extend the implementation for one-vs-all multi-class classification.
+			Extend the implementation to parallelize testing phase.
 		</p>
 	</li>
 </ul>
@@ -288,94 +268,8 @@
 <a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>Platform Choice</h3>
 
 <p dir="ltr">
-	We plan to use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays.
+	We use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays. The GPUs used are a Tesla K40 each on every node in the cluster.
 </p>
-
-  <h3>
-<a id="schedule" class="anchor" href="#schedule" aria-hidden="true"><span class="octicon octicon-link"></span></a>Schedule</h3>
-
-<div dir="ltr">
-	<table class="my_table">
-		<colgroup>
-			<col width="92"/>
-			<col width="532"/>
-		</colgroup>
-		<tbody>
-			<tr>
-				<td>
-					<p dir="ltr">
-						Dates
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Planned Goals
-					</p>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<p dir="ltr">
-						4/3 - 4/10
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Set up the development environment on latedays, and finish writing the boilerplate code. Review existing literature on Parallel SVMs.
-					</p>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<p dir="ltr">
-						4/11 - 4/16
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Get a correct, unoptimized implementation of the training algorithm up and running.
-					</p>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<p dir="ltr">
-						4/17 - 4/24
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Optimize training performance, and implement classifier.
-					</p>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<p dir="ltr">
-						4/25 - 5/2
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Benchmark against LIBSVM and profile performance (Exams week!)
-					</p>
-				</td>
-			</tr>
-			<tr>
-				<td>
-					<p dir="ltr">
-						5/3 - 5/11
-					</p>
-				</td>
-				<td>
-					<p dir="ltr">
-						Stretch goals, Presentation and Write up.
-					</p>
-				</td>
-			</tr>
-		</tbody>
-	</table>
-</div>
 
   <h3>
 <a id="bibliography" class="anchor" href="#bibliography" aria-hidden="true"><span class="octicon octicon-link"></span></a>Bibliography</h3>
