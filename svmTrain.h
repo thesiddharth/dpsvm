@@ -21,6 +21,21 @@
 #include <vector>
 #include <iostream>
 
+struct i_h_def{
+
+	int I_1;
+	int I_2;
+	float f_1;
+	float f_2;
+
+	//i_h_def () : I_1(-1), I_2(-1), f_1(1000000000), f_2(-1000000000) {}
+	
+	//i_h_def (float f1, float f2) : I_1(-1), I_2(-1), f_1(f1), f_2(f2) {}
+
+};
+
+typedef struct i_h_def i_helper;
+
 class SvmTrain {
 
 private:
@@ -31,16 +46,19 @@ private:
 	thrust::device_vector<float> g_x;
 	thrust::device_vector<int> g_y;
 	
-	thrust::device_vector<float> g_x_hi;
-	thrust::device_vector<float> g_x_lo;
-	
 	thrust::device_vector<float> g_f;
 
 	thrust::device_vector<float> g_alpha;
 	
  
 	thrust::device_vector<float> g_x_sq;
+	
+	thrust::counting_iterator<int> first;
+	thrust::counting_iterator<int> last;
 
+	thrust::device_vector<i_helper> g_I_set;
+
+	i_helper init;
 	float* raw_g_x;
 
 	cublasHandle_t handle;
@@ -49,6 +67,23 @@ private:
 
 	//Cache for kernel computations
 	myCache* lineCache;	
+	//////////////// TEST RELATED ////////////
+
+	
+	thrust::device_vector<float> g_alpha_c;
+	thrust::device_vector<float> g_x_c;
+	thrust::device_vector<int> g_y_c;
+	thrust::device_vector<float> g_x_sq_c;
+	thrust::device_vector<float> g_t_dp;
+	thrust::device_vector<int> g_sv_indices;
+
+
+	float* raw_g_x_c;
+	float* raw_g_t_dp;
+	int new_size;
+	
+	cublasHandle_t t_handle;
+	/////////////////////////////////////////
 
 public:
 	
@@ -77,6 +112,12 @@ public:
 	void get_x(float* x, float* x_copy, int idx, int num_attributes);
 
 	float get_train_accuracy();
+
+	void test_setup();
+
+	void aggregate_sv();
+
+	void destroy_t_cuda_handles();
 
 };
 
