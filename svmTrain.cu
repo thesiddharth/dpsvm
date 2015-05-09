@@ -25,6 +25,9 @@
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/inner_product.h>
 #include <thrust/extrema.h>
+#include <thrust/execution_policy.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/functional.h>
 
 #define IDX2C(i,j,ld) (((j)*(ld))+(i))
 
@@ -493,22 +496,28 @@ void SvmTrain::train_step2(int I_hi, int I_lo, float alpha_hi_new, float alpha_l
 	update_f(I_lo, I_hi, y_lo, y_hi, alpha_lo_old, alpha_hi_old, alpha_lo_new, alpha_hi_new);
 }
 
-float SvmTrain::get_train_accuracy() {
+/*float SvmTrain::get_train_accuracy() {
 	int num_correct = 0;
 
-	thrust::host_vector<float> alpha = g_alpha; 
-	float* raw_alpha = thrust::raw_pointer_cast(&alpha[0]);
+	//thrust::host_vector<float> alpha = g_alpha; 
+	//float* raw_alpha = thrust::raw_pointer_cast(&alpha[0]);
 	
 	for(int i=0; i<state.num_train_data; i++) {
 		//cout << "Iter: " << i << "\n";
 
-		float dual = 0;
+		cublasSgemv(t_handle, CUBLAS_OP_T, state.num_attributes, new_size, &alpha, &raw_g_x_c[0], state.num_attributes, &raw_g_x[i * state.num_attributes], 1, &beta, raw_g_t_dp, 1 );
+	
 
-		for(int j=0; j<state.num_train_data; j++) {
-			if(raw_alpha[j] != 0) {
-				dual += y[j]*raw_alpha[j]*rbf_kernel(j,i);
-			}
-		}
+		float i_sq = g_x_sq[i];
+
+		float dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
+   	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
+       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq), 0, thrust::plus<float>());
+		
+
+		//dual += y[j]*raw_alpha[j]*rbf_kernel(j,i);
+		//	}
+		//}
 
 		dual += b;
 
@@ -523,6 +532,143 @@ float SvmTrain::get_train_accuracy() {
 	}
 
 	return ((float)num_correct/(state.num_train_data));
+}*/
+
+
+struct is_not_sv
+{
+  template <typename Tuple>
+  __host__ __device__
+  bool operator()(const Tuple& t)
+  {
+    return (thrust::get<0>(t) <= 0);
+  }
+};
+
+template <typename Tuple>
+struct test_functor : public thrust::unary_function<float,Tuple> {
+
+	const float i_sq;
+	const float gamma;
+
+	test_functor(float _i_sq, float _gamma) : 
+
+	i_sq(_i_sq),
+	gamma(_gamma) 
+
+	{}
+
+
+    __host__ __device__ float operator()(const Tuple& t) const
+    {
+      return (thrust::get<0>(t) * thrust::get<1>(t) * expf(-1 * gamma * (thrust::get<2>(t) + i_sq - (2*thrust::get<3>(t)))));
+    }
+};
+
+
+void SvmTrain::test_setup() {
+
+	g_alpha_c = g_alpha;
+	g_y_c = y;
+	g_x_sq_c = g_x_sq;
+	g_sv_indices = thrust::device_vector<int>(state.num_train_data);
+
+	thrust::sequence(g_sv_indices.begin(), g_sv_indices.end());
+
+	aggregate_sv();
+
+	g_t_dp = thrust::device_vector<float>(new_size);
+	raw_g_t_dp = thrust::raw_pointer_cast(&g_t_dp[0]);
+
+	cublasStatus_t status;
+	status = cublasCreate(&t_handle);
+	
+	if (status != CUBLAS_STATUS_SUCCESS) { 
+
+		cout << "CUBLAS initialization failed\n"; 
+		exit(EXIT_FAILURE); 
+	}
+
+}
+
+
+void SvmTrain::aggregate_sv() {
+
+	new_size = thrust::remove_if(thrust::device, 
+					  thrust::make_zip_iterator(thrust::make_tuple(g_alpha_c.begin(), g_y_c.begin(), g_x_sq_c.begin(), g_sv_indices.begin())), 
+					  thrust::make_zip_iterator(thrust::make_tuple(g_alpha_c.end(), g_y_c.end(), g_x_sq_c.end(), g_sv_indices.end())),
+					  is_not_sv()) 
+					  - thrust::make_zip_iterator(thrust::make_tuple(g_alpha_c.begin(), g_y_c.begin(), 
+																	g_x_sq_c.begin(), g_sv_indices.begin()));
+
+	cout << "Number of SVs: " << new_size << "\n";
+
+	g_alpha_c.resize(new_size);
+	g_y_c.resize(new_size);
+	g_x_sq_c.resize(new_size);
+	g_sv_indices.resize(new_size);	
+	
+
+	thrust::host_vector<int> temp_indices = g_sv_indices; 
+	thrust::host_vector<float> temp_x(new_size * state.num_attributes);
+
+	for(int i = 0 ; i < new_size; i++) {
+
+		int idx = temp_indices[i];		
+
+		for(int j = 0; j < state.num_attributes; j++){
+
+			temp_x[i*state.num_attributes + j] = x[idx*state.num_attributes + j];
+	
+		}
+
+	}
+
+	g_x_c = temp_x;
+
+	raw_g_x_c = thrust::raw_pointer_cast(&g_x_c[0]);
+
+}
+
+float SvmTrain::get_train_accuracy() {
+	int num_correct = 0;
+
+	
+	for(int i=0; i<state.num_train_data; i++) {
+
+	
+		cublasSgemv(t_handle, CUBLAS_OP_T, state.num_attributes, new_size, &alpha, &raw_g_x_c[0], state.num_attributes, &raw_g_x[i * state.num_attributes], 1, &beta, raw_g_t_dp, 1 );
+
+
+		float i_sq = g_x_sq[i];
+
+	
+		float dual = 0;
+
+		dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
+   	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
+       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, thrust::plus<float>());
+		
+
+
+		int result = 1;
+		if(dual < 0) {
+			result = -1;
+		}
+
+		if(result == y[i]) {
+			num_correct++;
+		}
+	}
+
+	return ((float)num_correct/(state.num_train_data));
+}
+
+
+void SvmTrain::destroy_t_cuda_handles() {
+
+	cublasDestroy(t_handle);
+
 }
 
 float SvmTrain::clip_value(float num, float low, float high) {
@@ -534,7 +680,6 @@ float SvmTrain::clip_value(float num, float low, float high) {
 
 	return num;
 }
-
 
 void SvmTrain::get_x(float* x, float* x_copy, int idx, int num_attributes) {
 	int ctr = 0;

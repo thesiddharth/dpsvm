@@ -232,9 +232,9 @@ int main(int argc, char *argv[]) {
 
 	do {
 
-		if(rank == 0) {
-			cout << "Iteration: " << num_iter << "\n";	
-		}
+		//if(rank == 0) {
+		//	cout << "Iteration: " << num_iter << "\n";	
+		//}
 
 		svm.train_step1();
 
@@ -343,10 +343,14 @@ int main(int argc, char *argv[]) {
 		//obtain final b intercept
 		svm.b = (b_lo + b_hi)/2;
 		cout << "b: " << svm.b << "\n";
+	
+		svm.test_setup();
 
 		//obtain training accuracy
 		float train_accuracy = svm.get_train_accuracy();
 		cout << "Training accuracy: " << train_accuracy << "\n";
+	
+		svm.destroy_t_cuda_handles();
 	}
 
 	//write model to file
@@ -385,3 +389,4 @@ void initialize_shard_disp(int *shard_size, int *shard_disp, int cluster_size) {
 		shard_disp[i] = shard_disp[i-1] + shard_size[i-1];
 	}
 }
+

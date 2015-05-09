@@ -85,6 +85,24 @@ class SvmTrain {
 	
 		i_helper init;
 
+	//////////////// TEST RELATED ////////////
+
+	
+		thrust::device_vector<float> g_alpha_c;
+		thrust::device_vector<float> g_x_c;
+		thrust::device_vector<int> g_y_c;
+		thrust::device_vector<float> g_x_sq_c;
+		thrust::device_vector<float> g_t_dp;
+		thrust::device_vector<int> g_sv_indices;
+
+
+		float* raw_g_x_c;
+		float* raw_g_t_dp;
+		int new_size;
+	
+		cublasHandle_t t_handle;
+	/////////////////////////////////////////
+
 	public:
 	
 		float* rv;
@@ -114,6 +132,11 @@ class SvmTrain {
 
 		float get_train_accuracy();
 
+		void test_setup();
+
+		void aggregate_sv();
+	
+		void destroy_t_cuda_handles();
 };
 
 #endif
