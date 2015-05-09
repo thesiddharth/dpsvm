@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Svm-legion : A distributed implementation of Support Vector Machines using OpenMPI and CUDA">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>DPSVM</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/thesiddharth/dpsvm">View on GitHub</a>
+
+          <h1 id="project_title">DPSVM</h1>
+          <h2 id="project_tagline">Distributed Support Vector Machine training using OpenMPI and CUDA</h2>
+
+			<section> <h5>
+              <a href="http://thesiddharth.github.io/dpsvm/checkpoint.html"> Project Checkpoint </a>
+            </h5> </section>
+		  
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/thesiddharth/dpsvm/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/thesiddharth/dpsvm/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h3>
+<a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
+
+<p dir="ltr">
+	We are going to implement a distributed, parallel Support Vector Machine training algorithm for binary classification using the OpenMPI library and the CUDA parallel programming model. We plan to do this by parallelizing the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and distributing the parallelism over GPUs in a cluster.
+</p>
+
+<h3>
+<a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
+
+<p dir="ltr">
+	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. Platt originally proposed the SMO technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
+</p>
+
+<p dir="ltr">
+	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset. Each update step involves the computation of the modified inner products of two training data input vectors (the kernel trick), which is computationally intensive over the set of all training data. We aim to implement a parallel SMO algorithm which distributes the task of training over different nodes as proposed by Cao et. al. <sup>[1]</sup>, and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.
+</p>
+<p dir="ltr">
+	The parallel calculation of error terms and updates of the Lagrangian multipliers will (ideally) scale with the number of sub processes, and
+	allow for the use of parallel reduction with low communication overheads for global constants. We are using OpenMPI and CUDA to create a portable, high-performance implementation that leverages distributed environments.
+</p>
+<br/>
+<p dir="ltr" class="centeredImage">
+	<img
+	src="images/workflow.png" width="556px;" height="401px;"/>
+</p>
+<br/>
+
+<h3>
+<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenge</h3>
+
+<p dir="ltr">
+	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that minimizes communication overheads between:
+</p>
+<ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Nodes in the cluster
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			GPU and CPU
+		</p>
+	</li>
+</ol>
+<p dir="ltr">
+	This is exacerbated by the fact that our team has only a basic understanding of SVM theory and the SMO algorithm, and will need to do a thorough literature review to get a firm grasp on the concepts required.
+</p>
+
+<p dir="ltr">
+	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
+</p>
+<ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the kernel
+			computation, which is a SGEMV matrix operation).
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and updates across GPU tasks.
+		</p>
+	</li>
+</ol>
+<p dir="ltr">
+	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there
+	exist even more complex datasets <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
+</p>
+
+
+<h3>
+<a id="resources" class="anchor" href="#resources" aria-hidden="true"><span class="octicon octicon-link"></span></a>Resources</h3>
+
+<p dir="ltr">
+	We will be using the latedays cluster for running the system, using OpenMPI as the Message Passing Interface to distribute the data across different nodes. We hope to leverage parallelism primarily across the GPU devices in the cluster.
+</p>
+
+<p dir="ltr">
+	We are building upon the pseudo code provided for the parallel SMO algorithm, which uses OpenMPI to distribute computation across nodes by Cao et. al.<sup>[1]</sup> And we aim to start with the basic division of work across GPUs as described by Herrero-Lopez et. al.<sup>[2]</sup> in their implementation.
+</p>    
+
+  <h3>
+<a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
+
+<p dir="ltr">
+	Plan to achieve:
+</p>
+
+<ul>
+	<li dir="ltr">
+		<p dir="ltr">
+			An OpenMPI and CUDA based, distributed, parallel SVM training implementation.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Benchmark this implementation against the standard LibSVM implementation.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Achieve the following training speedups over LibSVM (expected):
+		</p>
+	</li>
+</ul>
+
+<div dir="ltr">
+	<table class="my_table">
+		<colgroup>
+			<col width="143"/>
+			<col width="141"/>
+			<col width="113"/>
+			<col width="101"/>
+			<col width="*"/>
+		</colgroup>
+		<tbody>
+			<tr>
+				<td class="setup_column">
+					<strong> <p> Setup vs. Dataset </p> </strong>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						Adult
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						Web
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						Mnist (Even vs Odd)
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						Covertype
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						Speedup achieved using single Tesla C1060
+						<sup>[2]</sup>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						10.45x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						14.97x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						32.79x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						-
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						Speedup achieved using chunking algorithm and threeTesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						19.38x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						42.89x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						129.64x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						Too large for LibSVM,
+					</p>
+					<p dir="ltr">
+						Runtime: 651s
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						Speedup expected in our implementation on latedays (which has 1 Tesla K40 on each machine)
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						~10x (High communication-to-computation overhead)
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						~35x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						~120x
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						&lt; 600s
+					</p>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+<p dir="ltr">
+	Hope to achieve:
+</p>
+
+<ul>
+	<li dir="ltr">
+		<p dir="ltr">
+			Profiling against Spark LIBLINEAR or MPI LIBLINEAR, <sup>[4]</sup>
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Extend the implementation for one-vs-all multi-class classification.
+		</p>
+	</li>
+</ul>
+
+  <h3>
+<a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>Platform Choice</h3>
+
+<p dir="ltr">
+	We plan to use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays.
+</p>
+
+  <h3>
+<a id="schedule" class="anchor" href="#schedule" aria-hidden="true"><span class="octicon octicon-link"></span></a>Schedule</h3>
+
+<div dir="ltr">
+	<table class="my_table">
+		<colgroup>
+			<col width="92"/>
+			<col width="532"/>
+		</colgroup>
+		<tbody>
+			<tr>
+				<td>
+					<p dir="ltr">
+						Dates
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Planned Goals
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/3 - 4/10
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Set up the development environment on latedays, and finish writing the boilerplate code. Review existing literature on Parallel SVMs.
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/11 - 4/16
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Get a correct, unoptimized implementation of the training algorithm up and running.
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/17 - 4/24
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Optimize training performance, and implement classifier.
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						4/25 - 5/2
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Benchmark against LIBSVM and profile performance (Exams week!)
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td>
+					<p dir="ltr">
+						5/3 - 5/11
+					</p>
+				</td>
+				<td>
+					<p dir="ltr">
+						Stretch goals, Presentation and Write up.
+					</p>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+  <h3>
+<a id="bibliography" class="anchor" href="#bibliography" aria-hidden="true"><span class="octicon octicon-link"></span></a>Bibliography</h3>
+
+<p dir="ltr">
+	<sup>[1]</sup> Cao, Li Juan, et al. "Parallel sequential minimal optimization for the training of support vector machines." Neural Networks, IEEE Transactions on 17.4 (2006): 1039-1049.
+</p>
+<p dir="ltr">
+	<sup>[2]</sup> Herrero-Lopez, Sergio, John R. Williams, and Abel Sanchez. "Parallel multiclass classification using SVMs on GPUs." Proceedings of the 3rd Workshop on General-Purpose Computation on Graphics Processing Units. ACM, 2010.
+</p>
+<p dir="ltr">
+	<sup>[3]</sup> Li, Qi, et al. "Parallel multitask cross validation for Support Vector Machine using GPU." Journal of Parallel and Distributed Computing 73.3 (2013): 293-302.
+</p>
+<p dir="ltr">
+	<sup>[4]</sup> http://www.csie.ntu.edu.tw/~cjlin/libsvmtools/distributed-liblinear/
+</p>
+
+
+</body>
+</html>
