@@ -649,17 +649,6 @@ void SvmTrain::aggregate_sv() {
 
 }
 
-struct my_sum : public thrust::binary_function<float, float, float> { 
-
-   	__host__ __device__
-   	float operator()(float x, float y) { 
-		
-		return x+y;		
-
-	}
-
-};
-
 float SvmTrain::get_train_accuracy() {
 	int num_correct = 0;
 
@@ -677,7 +666,7 @@ float SvmTrain::get_train_accuracy() {
 
 		dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
-       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, my_sum());
+       	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, thrust::plus<float>());
 		
 
 
