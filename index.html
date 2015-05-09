@@ -19,7 +19,7 @@
           <a id="forkme_banner" href="https://github.com/thesiddharth/dpsvm">View on GitHub</a>
 
           <h1 id="project_title">DPSVM</h1>
-          <h2 id="project_tagline">Distributed Support Vector Machine training using OpenMPI and CUDA</h2>
+          <h2 id="project_tagline">Distributed, Parallel Support Vector Machine training using OpenMPI and CUDA</h2>
 
 			<section> <h5>
               <a href="http://thesiddharth.github.io/dpsvm/checkpoint.html"> Project Checkpoint </a> || <a href="http://thesiddharth.github.io/dpsvm/proposal.html"> Proposal </a>
@@ -96,54 +96,10 @@
 	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there exist even more <strong><em>complex datasets</em></strong> <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
 </p>
 
-<h3><a id="results" class="anchor" href="#results" aria-hidden="true"><span class="octicon octicon-link"></span></a>Results</h3>
-
+<h3><a id="results" class="anchor" href="#results" aria-hidden="true"><span class="octicon octicon-link"></span></a>Current Status and Preliminary Results:</h3>
 <p dir="ltr">
-	We have currently implemented a version, which distributes the training over multiple GPUs using OpenMPI. This version has been profiled with popular datasets such as <strong>MNIST</strong> and <strong>Forest Covertype</strong> (Asuncion &amp; Newman, 2007), which require a large no. of iterations to converge.
+	We are done with the implementation of our training algorithm, and have also parallelized our classification approach over a single GPU. We are now in the process of profiling times with various datasets. Since we have implemented the SMO algorithm used by LibSVM, we get similar accuracy results and support-vector counts. Initial results on the popular <strong>Adult</strong>, <strong>MNIST</strong> and <strong>Forest Covertype</strong> datasets (Asuncion &amp; Newman, 2007) show the following training speedups over LibSVM:
 </p>
-
-<div>
-	<img src="images/mnist_1.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_1.png" width="400px;" height="300px;"/>
-</div>
-<br/>
-
-<div>
-	<img src="images/mnist_2.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_2.png" width="400px;" height="300px;"/>
-</div>
-<br/> 
-
-<div>
-	<img src="images/mnist_3.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_3.png" width="400px;" height="300px;"/>
-</div>
-<br/>    
-
-  <h3>
-<a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
-
-<p dir="ltr">
-	<strong><em>CURRENT STATUS:</em></strong>
-</p>
-
-<ul>
-	<li dir="ltr">
-		<p dir="ltr">
-			An OpenMPI and CUDA based, distributed, parallel SVM training implementation.
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			Benchmark this implementation against the standard LibSVM implementation.
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			Achieved the following training speedups over LibSVM:
-		</p>
-	</li>
-</ul>
 
 <div dir="ltr">
 	<table class="my_table">
@@ -200,7 +156,7 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>REFERENCE:</strong> Speedup achieved using chunking algorithm and threeTesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
+						<strong>REFERENCE:</strong> Speedup achieved using chunking algorithm on three Tesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
 					</p>
 				</td>
 				<td class="info_column">
@@ -248,6 +204,27 @@
 	</table>
 </div>
 
+<div>
+	<img src="images/mnist_1.png" width="400px;" height="300px;"/>
+	<img src="images/covertype_1.png" width="400px;" height="300px;"/>
+</div>
+<br/>
+
+<div>
+	<img src="images/mnist_2.png" width="400px;" height="300px;"/>
+	<img src="images/covertype_2.png" width="400px;" height="300px;"/>
+</div>
+<br/> 
+
+<div>
+	<img src="images/mnist_3.png" width="400px;" height="300px;"/>
+	<img src="images/covertype_3.png" width="400px;" height="300px;"/>
+</div>
+<br/>    
+
+  <h3>
+<a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
+
 <p dir="ltr">
 	<strong><em>Hope to achieve (by 11 May):</em></strong>
 </p>
@@ -260,7 +237,7 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Extend the implementation to parallelize testing phase.
+			Extend the implementation to parallelize testing phase -- <strong> DONE </strong>
 		</p>
 	</li>
 </ul>
