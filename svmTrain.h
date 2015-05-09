@@ -1,6 +1,12 @@
 #ifndef SVMTRAIN
 #define SVMTRAIN
 
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cuda.h>
+#include <cblas.h>
+#include "cache.hpp"
+
 #include <thrust/host_vector.h> 
 #include <thrust/device_vector.h> 
 #include <thrust/copy.h> 
@@ -14,145 +20,123 @@
 #include <list>
 #include <vector>
 #include <iostream>
+
+struct i_h_def{
+
+	int I_1;
+	int I_2;
+	float f_1;
+	float f_2;
+
+	//i_h_def () : I_1(-1), I_2(-1), f_1(1000000000), f_2(-1000000000) {}
+	
+	//i_h_def (float f1, float f2) : I_1(-1), I_2(-1), f_1(f1), f_2(f2) {}
+
+};
+
+typedef struct i_h_def i_helper;
+
+typedef struct {
+
+	int I_hi;
+	int I_lo;
+	float b_hi;
+	float b_lo;
+
+} step1_rv;
+
 class SvmTrain {
 
-private:
-
-	int a;
-	int b;
-
-public:
-
-    SvmTrain();
-    //~SvmTrain();
-
-    void setup();
-
-    void train();
-};
-
-
-class myCache {
-
 	private:
+
+		thrust::host_vector<float> x;
+		thrust::host_vector<int> y;
+
+		thrust::device_vector<float> g_x;
+		thrust::device_vector<int> g_y;
 			
-			int line_size;	
-			int max_size;
-			int size;
-			std::vector< thrust::device_vector<float> > lines;
-			//thrust::device_vector<float> line;
-			std::map<int, int> my_map; 
-			std::list<int> order;
+		thrust::device_vector<float> g_f;
+
+		thrust::device_vector<float> g_alpha;
+		
+	 
+		thrust::device_vector<float> g_x_sq;
+	
+		thrust::counting_iterator<int> first;
+		thrust::counting_iterator<int> last;
+
+		thrust::device_vector<i_helper> g_I_set;
+
+		float* raw_g_x;
+
+		cublasHandle_t handle;
+		cudaStream_t stream1;
+		cudaStream_t stream2;
+
+		//Cache for kernel computations
+		myCache* lineCache;
+
+		int num_train_data;
+		int disp;
+		int start;
+		int end;
+		int matrix_start;
+		int matrix_end;
+	
+		i_helper init;
+
+	//////////////// TEST RELATED ////////////
+
+	
+		thrust::device_vector<float> g_alpha_c;
+		thrust::device_vector<float> g_x_c;
+		thrust::device_vector<int> g_y_c;
+		thrust::device_vector<float> g_x_sq_c;
+		thrust::device_vector<float> g_t_dp;
+		thrust::device_vector<int> g_sv_indices;
+
+
+		float* raw_g_x_c;
+		float* raw_g_t_dp;
+		int new_size;
+	
+		cublasHandle_t t_handle;
+	/////////////////////////////////////////
 
 	public:
+	
+		float* rv;
+		float b;
 
-			void dump_map_contents();
-			
-			myCache(int max_size, int line_size);
+		SvmTrain(int n_data, int d);
 
-			//void add(int key, thrust::device_vector<float>& val);
+		void setup(std::vector<float>& raw_x, std::vector<int>& raw_y);
 
-			thrust::device_vector<float>* lookup(int key);
+		void train_step1();
 
-			thrust::device_vector<float>& get_new_cache_line(int key);
+		void train_step2(int I_hi, int I_lo, float alpha_hi, float alpha_lo);
+
+		void init_cuda_handles();
+
+		void destroy_cuda_handles();
+		
+		int update_f(int I_lo, int I_hi, int y_lo, int y_hi, float alpha_lo_old, float alpha_hi_old, float alpha_lo_new, float alpha_hi_new);
+
+		thrust::device_vector<float>& lookup_cache(int I_idx, bool& cache_hit);
+
+		float clip_value(float num, float low, float high);
+		
+		float rbf_kernel(int i1, int i2);
+		
+		void get_x(float* x, float* x_copy, int idx, int num_attributes);
+
+		float get_train_accuracy();
+
+		void test_setup();
+
+		void aggregate_sv();
+	
+		void destroy_t_cuda_handles();
 };
 
-
-
-void myCache::dump_map_contents() {
-
-	std::map<int,int>::iterator it;
-
-	std::cout << "--------\n";
-
-	for(it = my_map.begin(); it != my_map.end(); ++it) {
-
-		std::cout << it->first << "," << it->second << "::" ;
-
-	}
-	
-	std::cout << "\n";
-	
-	std::list<int>::iterator it2;
-	
-	for(it2 = order.begin(); it2 != order.end(); ++it2) {
-
-		std::cout << *it2 << "::" ;
-
-	}
-
-	std::cout << "\n----------\n";
-
-
-}
-
-
-myCache::myCache(int max_size, int line_size) {
-
-	this->max_size = max_size;	
-	this->line_size = line_size;
-	this->size = 0;
-	lines.resize(max_size);
-
-	for(int i = 0; i < max_size; i++) {
-
-		lines[i] = thrust::device_vector<float>(line_size);
-		//line = thrust::device_vector<float>(line_size);
-
-	}
-
-}
-
-thrust::device_vector<float>* myCache::lookup(int key) {
-
-	//std::cout << "Looking up " << key << "\n";
-
-	std::map<int,int>::iterator it = my_map.find(key);
-
-	if(it != my_map.end()) {
-
-		order.remove(key);
-		order.push_back(key);
-
-		return &lines[it->second];
-
-		//return &line;
-
-	}
-	else {
-
-		return NULL;
-
-	}
-
-}
-
-thrust::device_vector<float>& myCache::get_new_cache_line(int key) {
-
-	if(size == max_size){
-
-		int del_key = order.front();
-		std::map<int,int>::iterator it = my_map.find(del_key);
-		int line_number = it->second;
-
-//		thrust::fill(this->lines[line_number].begin(), this->lines[line_number].end(), 0);
-
-		my_map.erase(it);
-
-		my_map[key] = line_number;
-
-		order.push_back(key);
-		order.pop_front();	
-
-		//std::cout << "Returning new line: " << line_number << "\n";
-		return lines[line_number];
-	}
-
-	my_map[key] = size;
-	order.push_back(key);
-		
-	//std::cout << "Returning new line: " << size << "\n";
-	return lines[size++];
-	
-}
 #endif

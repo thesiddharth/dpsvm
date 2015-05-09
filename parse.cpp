@@ -7,7 +7,7 @@
 
 using namespace std;
 
-void populate_data(vector<float> &x, vector<int> &y, int num_train_data, int num_attributes,char input_file_name[60] ) {
+void populate_data(vector<float> &x, vector<int> &y, int num_train_data, int num_attributes,char input_file_name[200] ) {
 	
     ifstream file(input_file_name);
 
