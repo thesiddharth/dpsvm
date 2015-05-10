@@ -148,12 +148,12 @@ int main(int argc, char *argv[]) {
 	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
 	cout << "Populated Data from input file\n";
 
+	unsigned long long start;
+	start = CycleTimer::currentSeconds();
+
 	SvmTrain svm;
 
 	svm.setup(raw_x, raw_y);
-	
-	unsigned long long start;
-	start = CycleTimer::currentSeconds();
 
 	int num_iter = 0;
 
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 
 		num_iter++;
 
-//		cout << num_iter << "\n";
+		//	cout << "--------------------------------\n";
 
 	} while((svm.b_lo > (svm.b_hi +(2*state.epsilon))) && num_iter < state.max_iter);
 	
@@ -183,13 +183,10 @@ int main(int argc, char *argv[]) {
 	svm.b = (svm.b_lo + svm.b_hi)/2;
 	cout << "b: " << svm.b << "\n";
 
-	svm.test_setup();
-
 	//obtain training accuracy
 	float train_accuracy = svm.get_train_accuracy();
 	cout << "Training accuracy: " << train_accuracy << "\n";
 
-	svm.destroy_t_cuda_handles();
 	//write model to file
 	//write_out_model(x, y, alpha, b);
 
