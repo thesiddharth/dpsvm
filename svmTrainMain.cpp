@@ -10,7 +10,8 @@
 #include <math.h>
 #include <vector>
 #include "CycleTimer.h"
-//#include <mpi.h>
+#include <fstream>
+#include <sstream>
 
 state_model state;
 
@@ -139,18 +140,18 @@ int main(int argc, char *argv[]) {
 	parse_arguments(argc, argv);
 
 	//input data attributes and labels
-	std::vector<float> raw_x(state.num_train_data * state.num_attributes,0);// = new float[state.num_train_data * state.num_attributes];
-	std::vector<int> raw_y(state.num_train_data,0);// = new int[state.num_train_data];
+	std::vector<float> x(state.num_train_data * state.num_attributes,0);
+	std::vector<int> y(state.num_train_data,0);
 
 	//read data from input file
-	cout << state.num_train_data << " " << state.num_attributes << " " << state.input_file_name << "\n";
+	cout << state.num_train_data << ", " << state.num_attributes << ": " << state.input_file_name << "\n";
 
-	populate_data(raw_x, raw_y, state.num_train_data, state.num_attributes, state.input_file_name);
+	populate_data(x, y, state.num_train_data, state.num_attributes, state.input_file_name);
 	cout << "Populated Data from input file\n";
 
 	SvmTrain svm;
 
-	svm.setup(raw_x, raw_y);
+	svm.setup(x, y);
 	
 	unsigned long long start;
 	start = CycleTimer::currentSeconds();
@@ -190,18 +191,50 @@ int main(int argc, char *argv[]) {
 	cout << "Training accuracy: " << train_accuracy << "\n";
 
 	svm.destroy_t_cuda_handles();
+
+	cout << "Writing out model\n";
+
+	float* raw_x = &x[0];
+	int* raw_y = &y[0];
+	thrust::host_vector<float> alpha_copy = svm.get_g_alpha();
+	float* raw_alpha = thrust::raw_pointer_cast(&alpha_copy[0]);	
+
 	//write model to file
-	//write_out_model(x, y, alpha, b);
+	write_out_model(raw_x, raw_y, raw_alpha, svm.b);
 
-	//cout << "Training model has been saved to the file " << state.model_file_name << "\n";
-
-	//clear training data
-	//for(int i = 0 ; i < state.num_train_data; i++) {	
-	//	delete [] x[i];
-	//}
-
-	//delete [] x;
-	//delete [] y;
+	cout << "Training model has been saved to the file " << state.model_file_name << "\n";
 
 	return 0;
+}
+
+void write_out_model(float* x, int* y, float* alpha, float b) {
+	//open output filestream for writing the model
+	ofstream model_file;
+	model_file.open(state.model_file_name);
+
+	if(model_file.is_open()) {
+		//gamma used in kernel for training
+		model_file << state.gamma << "\n";
+		model_file << b << "\n";
+
+		for(int i=0; i<state.num_train_data; i++) {
+			if(alpha[i] != 0) {
+				model_file << alpha[i] << "," << y[i];
+
+				//index for x
+				int idx = i*(state.num_attributes);
+
+				for(int j=0; j<state.num_attributes; j++) {
+					model_file << "," << x[idx + j];
+				}
+
+				model_file << "\n";
+			}
+		}
+
+		model_file.close();
+	} else {
+		cout << "Model output file " << state.model_file_name << " could not be opened for writing.\n";
+		exit(-1);
+	}
 }

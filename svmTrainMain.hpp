@@ -18,4 +18,6 @@ typedef struct {
 //global structure for training parameters
 extern state_model state;
 
+void write_out_model(float* x, int* y, float* alpha, float b);
+
 #endif

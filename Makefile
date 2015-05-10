@@ -1,5 +1,6 @@
 
 EXECUTABLE := svmTrain
+TEST_EXECUTABLE := svmTest
 
 CU_FILES   := svmTrain.cu
 
@@ -36,12 +37,12 @@ FRAMEWORKS += OpenGL GLUT
 LDFLAGS=-L/usr/local/cuda/lib/ -lcudart
 else
 # Building on Linux
-NVCCFLAGS=-O3 -m64 -arch compute_20
+NVCCFLAGS=-O3 -m64 -arch compute_20 -std=c++11
 LIBS += GL cudart
 LDFLAGS=-L/usr/local/cuda/lib64/ -lcudart
 CUDA_INCFLAGS=-I/usr/local/cuda/include
-BLAS_INCFLAGS=-I/home/siddhar2/blas/CBLAS/include/  
-BLAS_LDFLAGS=-L/home/siddhar2/blas/BLAS -L/home/siddhar2/blas/CBLAS/lib -lcblas -lblas -lm -L/usr/lib64 -l:libgfortran.so.3.0.0 -lcublas
+BLAS_INCFLAGS=-I/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/CBLAS/include/  
+BLAS_LDFLAGS=-L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/BLAS -L/afs/andrew.cmu.edu/usr11/siddhar2/private/618/cblas/CBLAS/lib -lcblas -lblas -lm -L/usr/lib64 -l:libgfortran.so.3.0.0 -lcublas
 MPI_LDFLAGS=-lpthread -lmpi -lmpi_cxx
 endif
 
@@ -50,7 +51,8 @@ LDFRAMEWORKS := $(addprefix -framework , $(FRAMEWORKS))
 
 NVCC=nvcc
 
-OBJS=$(OBJDIR)/svmTrain.o $(OBJDIR)/parse.o $(OBJDIR)/svmTrainMain.o
+OBJS=$(OBJDIR)/svmTrain.o $(OBJDIR)/parse.o $(OBJDIR)/svmTrainMain.o $(OBJDIR)/cache.o
+TEST_OBJS=$(OBJDIR)/svmTest.o
 SAMPLE_OBJS=$(OBJDIR)/mpi_sample.o
 SEQ_OBJS=$(OBJDIR)/seq.o
 
@@ -62,13 +64,16 @@ dirs:
 		mkdir -p $(OBJDIR)/
 
 clean:
-		rm -rf $(OBJDIR) *~ $(EXECUTABLE) mpi_sample seq  $(LOGS)
+		rm -rf $(OBJDIR) *~ $(EXECUTABLE) $(TESTT_EXECUTABLE) seq  $(LOGS)
 
 run_old:
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) $(MPIRUN) --hostfile host_file -np 6 $(EXECUTABLE) -s 10000000 -d norm -p 5
 
+run_test: $(TEST_EXECUTABLE)
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) ./$(TEST_EXECUTABLE) --num-att 123 --num-ex 16281 -f ../../git_project/data/adult/8/test_conv.csv -m model.txt
+
 run: $(EXECUTABLE)
-	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) ./$(EXECUTABLE) --num-att 123 --num-ex 32561 -c 100 -g 0.5 -e 0.01  -f ~/AFS/private/618/git_project/data/adult/8/train_conv.csv -m model.txt --max-iter 100000
+	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) ./$(EXECUTABLE) --num-att 123 --num-ex 32561 -c 100 -g 0.5 -e 0.001  -f ../../git_project/data/adult/8/train_conv.csv -m model.txt --max-iter 150000
 
 run_sample: mpi_sample
 	LD_LIBRARY_PATH=$(LD_LIBRARY_PATH) $(MPIRUN) -np 6 mpi_sample -s 10000000 -d norm -p 5
@@ -81,6 +86,9 @@ mpi_sample: dirs $(SAMPLE_OBJS)
 
 seq: dirs $(SEQ_OBJS)
 		$(CXX) $(CXXFLAGS) $(MPI_LDFLAGS) -o $@ $(SEQ_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
+
+$(TEST_EXECUTABLE): dirs $(TEST_OBJS)
+		$(NVCC) $(NVCCFLAGS) -o $@ $(TEST_OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)
 
 $(EXECUTABLE): dirs $(OBJS)
 		$(NVCC) $(NVCCFLAGS) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS) $(LDFRAMEWORKS) $(BLAS_LDFLAGS)

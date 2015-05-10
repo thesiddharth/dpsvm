@@ -48,8 +48,7 @@ private:
 	
 	thrust::device_vector<float> g_f;
 
-	thrust::device_vector<float> g_alpha;
-	
+	thrust::device_vector<float> g_alpha;	
  
 	thrust::device_vector<float> g_x_sq;
 	
@@ -119,6 +118,7 @@ public:
 
 	void destroy_t_cuda_handles();
 
+	thrust::device_vector<float>& get_g_alpha();
 };
 
 #endif
