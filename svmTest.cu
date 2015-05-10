@@ -409,7 +409,7 @@ float SvmTest::get_test_accuracy() {
         float i_sq = g_x_sq[i];
 
     
-        float dual = 0;
+        float dual = 0.0f;
 
         dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_model.begin(), g_alpha.begin(), g_x_sq_model.begin(), g_t_dp.begin())),
                      thrust::make_zip_iterator(thrust::make_tuple(g_y_model.end(), g_alpha.end(), g_x_sq_model.end(), g_t_dp.end())),

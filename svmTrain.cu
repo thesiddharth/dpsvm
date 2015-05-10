@@ -643,7 +643,7 @@ float SvmTrain::get_train_accuracy() {
 		float i_sq = g_x_sq[i];
 
 	
-		float dual = 0;
+		float dual = 0.0f;
 
 		dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
@@ -652,7 +652,7 @@ float SvmTrain::get_train_accuracy() {
 		//dual += b;
 
 		int result = 1;
-		if(dual < 0) {
+		if(dual < 0.0f) {
 			result = -1;
 		}
 
