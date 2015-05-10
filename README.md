@@ -24,4 +24,6 @@ We have implemented a distributed and parallel Support Vector Machine training a
 
 The same job using **LibSVM** takes *13,963 seconds*, using an Intel Core i7 920.
 
-The DPSVM training phase has the same number of Support Vectors.
+The DPSVM training phase has the same number of Support Vectors as LibSVM.
+
+![alt tag](https://github.com/thesiddharth/dpsvm/blob/gh-pages/images/mnist.png)
