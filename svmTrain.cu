@@ -512,7 +512,7 @@ float SvmTrain::get_train_accuracy() {
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
        	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, thrust::plus<float>());
 		
-		//dual += b;
+		dual -= b;
 
 		int result = 1;
 		if(dual < 0) {
