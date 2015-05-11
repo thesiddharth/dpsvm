@@ -39,66 +39,172 @@
 <a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
 
 <p dir="ltr">
-	We have implemented a distributed and parallel <strong>Support Vector Machine</strong> training algorithm for binary classification using the <strong>OpenMPI</strong> library and the <strong>CUDA</strong> parallel programming model. We parallelize the modified Sequential Minimal Optimization algorithm used by popular tools like LIBSVM, and distribute the parallelism over <strong>GPUs</strong> in a cluster.
+	We have implemented a distributed and parallel <strong>Support Vector Machine</strong> training algorithm for binary classification using the <strong>OpenMPI</strong> library and the <strong>CUDA</strong> parallel programming model. Our implementation achieves the <strong>same accuracy</strong> as the ubiquitously used SVM solver LibSVM on 4 popular datasets, with speedups of up to <strong>300x</strong> against the latter, and up to <strong>10x</strong> against a few of the most highly-cited, recent papers on parallel SVMs. Our test environments include the <strong>Tesla K40m</strong> GPUs present on 10 nodes of the <strong>latedays cluster</strong><em>(at CMU)</em> and the <strong>GTX 780</strong> GPUs present on the GHC-41 machine<em>(at CMU)</em>. 
 </p>
 
 <h3>
 <a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
 
 <p dir="ltr">
-	The Support Vector Machine (<strong>SVM</strong>) is a widely used supervised machine learning algorithm, which is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem. This QP is solved iteratively, where each update step involves the computation of the modified inner products of two training data input vectors (the <strong>kernel</strong> trick), which is computationally intensive over the set of all training data.
+	The Support Vector Machine (<strong>SVM</strong>) is a widely used supervised machine learning algorithm - it is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. In 1998, John Platt originally proposed the  Sequential Minimal Optimization (<em>SMO</em>) technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
 </p>
 <p dir="ltr">
-	We implement a parallel SMO algorithm which distributes the task of training over different nodes, as proposed by Cao et. al. <sup>[1]</sup> and extend it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology. We are using OpenMPI and CUDA to create a portable, high-performance implementation that leverages distributed environments.
+	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset. This algorithm, or variants of it, is used by several popular SVM solvers, including <strong>LibSVM</strong>. Our implementation uses a parallel version which distributes the task of training over different nodes, as proposed by Cao et. al. <sup>[1]</sup> and extends it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.  The exact loss function, and other equations describing the dual QP problem are succinctly summarized in section 2 of Herrero-Lopez et. al.’s paper - we’ll attempt to give a high level overview of the algorithm here to show how we can benefit from parallelization. As mentioned before, this is an iterative algorithm. Each update step involves:
 </p>
+
 <br/>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Separating the training data points into 2 sets based on a function that involves the class of each point and the Lagrange multiplier associated with each point. The latter can be thought of as a weight, with the importance of a point in classification being directly proportional to this weight.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Selecting one representative point from each set, based on the maximum/minimum of a classification function defined for each point.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Updating the <em>‘weights’</em> of these two points.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Updating the classification function of all other training points, based on the two updates made in <em> step 3</em>.
+		</p>
+	</li>
+</ol></ol>
+<br/>
+
+<p dir="ltr">
+	Step 3 involves the computation of <strong><em>three</em></strong> inner products using the <strong><em>kernel</em></strong> trick (each involving two training data input vectors). On the other hand, step 4 involves the computation of <strong><em>(2*number_of_training_points)</em></strong> such inner products - each of the selected points versus the entire training set .  However, this also exposes two potential avenues for parallelization:
+</p>
+
+<br/>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			The inner product and classification-function update steps can be parallelized. This involves a huge number of small calculations - particularly amenable to GPUs, and in particular BLAS functions implemented on GPUs.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			The training data itself can be distributed over several nodes, with relatively small synchronization updates needed each iteration - this is particularly amenable to message passing paradigms liken OpenMPI.
+		</p>
+	</li>
+</ol></ol>
+<br/>
+
 <p dir="ltr" class="centeredImage">
 	<img
 	src="images/workflow.png" width="556px;" height="401px;"/>
 </p>
 <br/>
 
+<a id="approach" class="anchor" href="#approach" aria-hidden="true"><span class="octicon octicon-link"></span></a><h3>Approach</h3>
+
+<p dir="ltr">
+	Our approach seeks to exploit both the avenues of parallelization mentioned in the previous section.
+</p>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Parallelizing kernel calculations using GPUs: For the kernel used to evaluate inner products, we use the <strong><em>Gaussian/Radial Basis Function (RBF) kernel</em></strong> - a very popular kernel function in SVM classification as it maps to an infinite dimensional space. The RBF kernel calculates the dot product of two input vectors x and y as follows:
+		</p>
+		<p dir="ltr" class="centeredImage">
+			<img src="images/kernel.png"/>
+		</p>
+		<p dir="ltr">
+			As the equation above shows, this can be decomposed to depend on the sum of the norms of the individual vectors minus twice the ordinary vector product of the two. In step 4, as mentioned above, we need to do this for two selected points, each versus the entire training set. Now, we can’t pre-compute and store the dot product of each training vector with each other vector - this would require O(N<sup>2</sup>) storage, which won’t be available on GPUs for even moderately large datasets. We can, however, pre compute and store the norm of each vector - this requires only O(N) storage. 
+		</p>
+		<p dir = "ltr">
+			If we do this, we only need to calculate the ||x||.||y|| terms in each update phase - this corresponds to two matrix-vector products. Here, the matrix corresponds the training set and the vector corresponds each of the two selected training points. We use <strong><em>cuBLAS</em></strong> to efficiently parallelize these two matrix-vector dot products. The resulting number-of-training-examples sized vector of updates must now be used to update the classification function of all the training points. However, order does not matter now - what we essentially have are a few vectors that need to be combined into one vector. Each component can be computed in parallel. For this, we use a <strong>thrust::for_each()</strong> loop with a custom functor to compute the update.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Distributing the training data over multiple nodes: Each successive step in the SMO algorithm involves finding two candidate points (a max/min operation), updating their weights, and doing a global update which depends only on these two points and the point being updated. Thus, we can shard our training data, locally find candidate points in each shard, and do a global reduction (another simple max/min computation) to find the global candidate points. Each node can then update its own shard in parallel. 
+		</p>
+		<p dir="ltr">
+			This has the additional potential benefit of allowing datasets too large to fit into one GPU’s memory to be used. However, our implementation sacrifices this benefit to reduce communication overheads - we store the entire dataset at every node, so that only the indices of the global candidate points need be known by each shard, and not the full vectors. This is acceptable, since there are several complex datasets which are smaller than 500MB in size and still require millions of iterations to converge - any savings in communication overhead go a long way towards improving speedups for these. However, adapting to accommodate datasets that don’t fit in a single GPU’s memory would be fairly straightforward as well.
+		</p>
+		<p dir="ltr">
+			We use <strong>OpenMPI</strong> to achieve the functionality mentioned in this point.
+		</p>
+	</li>
+</ol></ol>
+<br/>
+
+<a id="speedup" class="anchor" href="#speedup" aria-hidden="true"><span class="octicon octicon-link"></span></a><h3>Speed-Up Tricks</h3>
+
+<p dir="ltr">
+	Our implementation also uses a couple of neat tricks to really improve performance:
+</p>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			It’s been observed (both in literature, and by us personally through painstaking profiling sessions) that candidate points tend to repeat themselves over short bursts - this immediately indicates that caching matrix-vector dot products should be helpful. Our approach uses an LRU cache for this purpose, the size of which can be specified as an input parameter. With a cache size of about ten lines (a line being the size of a training vector), we see a <strong><em>significant performance improvement (2x - 4x)</em></strong> on all datasets.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Post adding the cache, further profiling showed separating the data into sets and actually selecting the candidate points (steps I and II, as mentioned in the background) was often the bottleneck. Our initial implementation for this used a <strong><em>thrust::for_each()</em></strong> loop to make the sets (using a tricky, lock-less functor), and Thrust’s special maximum and minimum reduction functions to locate the points within the sets. However, this required one pass over each set, which was done serially. Instead, we replaced this with an approach where we built only a <strong><em>single aggregated set of tuples</strong></em> - the first element of the tuple represents a point in the set 1 and the second, a point in set 2. We then wrote a custom reduction functor to find the maximum of the first tuple entry and the minimum of the second in one pass itself. This  showed a significant speedup as well, shaving a third off the times in our runs.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			We use individual CUDA streams to calculate each of the 2 matrix-vector products required (if both cache lookups miss) in each iteration - this allows CUDA to mix the two <strong>SGEMV cuBLAS</strong> operations since they are mutually exclusive.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Our implementation also has several basic optimizations. We don’t allocate any GPU memory with loops - all allocation, CUDA stream setup and cuBLAS handle setup is done in a separate setup phase, and all destruction and deallocation is done in a separate <em>‘destroy’</em> phase. Any operation that can make use of an optimized thrust approach, does so.
+		</p>
+	</li>
+</ol></ol>
+<br/>
+
 <h3>
-<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>Challenges</h3>
-
+	<a id="classification" class="anchor" href="#classification" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Classification
+</h3>
 <p dir="ltr">
-	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that <strong><em>minimizes communication</em></strong> overheads between:
-</p>
-<ol>
-	<li dir="ltr">
-		<p dir="ltr">
-			Nodes in the cluster
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			GPU and CPU
-		</p>
-	</li>
-</ol>
-
-<p dir="ltr">
-	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
-</p>
-<ol>
-	<li dir="ltr">
-		<p dir="ltr">
-			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the <strong><em>kernel computation</em></strong>, which is a SGEMV matrix operation).
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and updates across GPU tasks.
-		</p>
-	</li>
-</ol>
-<p dir="ltr">
-	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there exist even more <strong><em>complex datasets</em></strong> <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
+	One of our stretch goals for this project was to parallelize classification as well. This turned out to be a necessity, since our standard sequential approach took prohibitively long times for the larger datasets. While we haven’t spent much time optimizing this, we seem to match the parallel classification timings put forward by Herrero-Lopez et. al. in their paper. Classification essentially follows the following process:
 </p>
 
-<h3><a id="results" class="anchor" href="#results" aria-hidden="true"><span class="octicon octicon-link"></span></a>Current Status and Preliminary Results:</h3>
+<br/>
+<ul><ul>
+	<li dir="ltr">
+		<p dir="ltr">
+			For each test point, we evaluate a classification function that depends on the kernelized dot product of the test vector with each of the training points that has a non-zero, positive weight (i.e. those points of the training corpus that are <em>‘support vectors’</em>).
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			We then add an unregularized bias term that is calculated as a result of the training process.
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			The sign of the final summation gives us our class prediction.
+		</p>
+	</li>
+</ul></ul>
+<br/>
+
 <p dir="ltr">
-	We are done with the implementation of our training algorithm, and have also parallelized our classification approach over a single GPU. We are now in the process of profiling times with various datasets. Since we have implemented the SMO algorithm used by LibSVM, we get <strong>similar accuracy results and support-vector counts</strong>. Initial results on the popular <strong>Adult</strong>, <strong>MNIST</strong> and <strong>Forest Covertype</strong> datasets (Asuncion &amp; Newman, 2007) show the following training speedups <strong>over LibSVM</strong>:
+	Our approach involves using a cuBLAS SGEMV operation, followed by a thrust transform_reduce operation using a custom functor to achieve this. For getting training accuracy (i.e. classifying the training data immediately post training), we also use Thrust to sparsify the training matrix by removing those points that aren’t support vectors in parallel.
+</p>
+<br/>
+
+<h3>
+	<a id="results" class="anchor" href="#results" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Results
+</h3>
+
+<p dir="ltr">
+	This the table of results for the 3 datasets we had mentioned in the proposal (with expected speed-ups in the proposal):
 </p>
 
 <div dir="ltr">
@@ -161,7 +267,7 @@
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						19.38x
+						19.38x (3 GPUs on single node)
 					</p>
 				</td>
 				<td class="info_column">
@@ -185,12 +291,15 @@
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						<strong>24x</strong> (1 GPU)
+						<strong>14.229x</strong> (1 GPU)
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						<strong>124x</strong> (1 GPU) - <strong>531x</strong> (10 GPUs)
+						<strong>102x</strong> (1 GPU) - <strong>304x</strong> (10 GPUs)
+					</p>
+					<p dir="ltr">
+						<em>(in ranges of 500x if tolerance is reduced)</em>
 					</p>
 				</td>
 				<td class="info_column">
@@ -204,50 +313,203 @@
 	</table>
 </div>
 
+<br/>
+
+<p dir="ltr">
+	The graphs below summarize the runtime and the speed-up statistics of DPSVM with respect to Herrero-Lopez et. al.'s implementation, for the <strong>MNIST</strong>(LeCun et al., 1998) and the <strong>Web dataset</strong> (Platt, 1999). Herrero-Lopez et. al. profile their implementation using an <strong>NVIDIA Tesla C1060 GPU</strong>, which is comparable to our tests using an <strong>NVIDIA GTX 780</strong> for a single node case. But, as pointed in the summary we use the <strong>NVIDIA Tesla K40m</strong> GPUs for the multiple node case.
+</p>
+
+<p dir="ltr">
+	The <strong>Spark MLLib's SVMWithSGD()</strong> implementation was profiled on an <strong>AWS EMR</strong> cluster, using <strong>10 m3.2xlarge</strong> machines. The RDDs were persisted in memory for this Spark implementation. Note that SVMWithSGD() esentially acts like a <strong><em>linear</em></strong> kernel, which would have smaller run-times, but sacrifices accuracy of classification for datasets which can't be separated with linear hyperplanes.
+</p>
+
 <div>
 	<img src="images/mnist_1.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_1.png" width="400px;" height="300px;"/>
+	<img src="images/web_1.png" width="400px;" height="300px;"/>
 </div>
 <br/>
 
 <div>
-	<img src="images/mnist_2.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_2.png" width="400px;" height="300px;"/>
+	<img src="images/mnist_3.png" width="400px;" height="300px;"/>
+	<img src="images/web_3.png" width="400px;" height="300px;"/>
 </div>
 <br/> 
 
 <div>
-	<img src="images/mnist_3.png" width="400px;" height="300px;"/>
-	<img src="images/covertype_3.png" width="400px;" height="300px;"/>
+	<img src="images/mnist_4.png" width="400px;" height="300px;"/>
+	<img src="images/web_4.png" width="400px;" height="300px;"/>
 </div>
 <br/>    
 
-  <h3>
-<a id="goals" class="anchor" href="#goals" aria-hidden="true"><span class="octicon octicon-link"></span></a>Goals and Deliverables</h3>
+<h3>
+	<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Challenges
+</h3>
 
 <p dir="ltr">
-	<strong><em>Hope to achieve (by 11 May):</em></strong>
+	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that <strong><em>minimizes communication</em></strong> overheads between:
+</p>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Nodes in the cluster
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			GPU and CPU
+		</p>
+	</li>
+</ol></ol>
+
+<p dir="ltr">
+	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
+</p>
+<ol><ol>
+	<li dir="ltr">
+		<p dir="ltr">
+			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the <strong><em>kernel computation</em></strong>, which is a SGEMV matrix operation).
+		</p>
+	</li>
+	<li dir="ltr">
+		<p dir="ltr">
+			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and updates across GPU tasks.
+		</p>
+	</li>
+</ol></ol>
+<p dir="ltr">
+	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there exist even more <strong><em>complex datasets</em></strong> <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
 </p>
 
-<ul>
-	<li dir="ltr">
-		<p dir="ltr">
-			Profiling against Spark LIBLINEAR or MPI LIBLINEAR, <sup>[4]</sup>
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			Extend the implementation to parallelize testing phase -- <strong> DONE </strong>
-		</p>
-	</li>
-</ul>
+<br/>
+<p dir="ltr">
+	For the first case, of increased overhead of communication with increasing number of nodes, can be observed using the <strong>Adult dataset</strong>(Asuncion &amp; Newman, 2007), which actually performs better on a single GPU, rather than distributing work across different GPUs. This has been confirmed by profiling the run-time of the runs, with breakdown of the communication and computation times. The next few graphs illustrate this trend.
+</p>
 
-  <h3>
-<a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>Platform Choice</h3>
+<div>
+	<img src="images/adult_1.png" width="400px;" height="300px;"/>
+	<img src="images/adult_2.png" width="400px;" height="300px;"/>
+</div>
+<br/>
+
+<div>
+	<img src="images/adult_3.png" width="400px;" height="300px;"/>
+	<img src="images/adult_4.png" width="400px;" height="300px;"/>
+</div>
+<br/>
+
+<h3>
+	<a id="runs" class="anchor" href="#runs" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Run Statistics
+</h3>
+
+<p dir="ltr">
+	We would like to conclude the results by describing the Gaussian Kernel Parameters used for various datasets, with the number of iterations and support vectors obtained for various configurations.
+</p>
+
+<h5>MNIST</h5>
+<strong>Parameters of Gaussian Kernel: <em>C</em></strong> = 10, <strong><em>gamma</em></strong> = 0.125, <strong><em>tolerance</em></strong> = 0.001
+<br/>
+
+<div dir="ltr">
+	<table>
+    <tr>
+        <td><strong>Number of nodes</strong></td>
+        <td><strong>LibSVM 1</strong></td>
+        <td><strong>Lopez et. al. 1 GPU</strong></td>
+        <td><strong>1</strong></td>
+        <td><strong>2</strong></td>
+        <td><strong>4</strong></td>
+        <td><strong>6</strong></td>
+        <td><strong>8</strong></td>
+        <td><strong>10</strong></td>
+        <td><strong>Spark 10</strong></td>
+    </tr>
+    <tr>
+        <td><strong>Svm training time (in sec.)</strong></td>
+        <td>13964</td>
+        <td>426</td>
+        <td>137</td>
+        <td>106</td>
+        <td>66</td>
+        <td>54</td>
+        <td>48</td>
+        <td>46</td>
+        <td>101</td>
+    </tr>
+    <tr>
+        <td><strong>MPI communication time (in sec.)</strong></td>
+        <td>n/a</td>
+        <td>n/a</td>
+        <td>0</td>
+        <td>4</td>
+        <td>9</td>
+        <td>7</td>
+        <td>15</td>
+        <td>18</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of iterations to converge</strong></td>
+        <td>76104</td>
+        <td>68038</td>
+        <td>68200</td>
+        <td>67995</td>
+        <td>67866</td>
+        <td>67966</td>
+        <td>67884</td>
+        <td>68037</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of support vectors</strong></td>
+        <td>43753</td>
+        <td>43731</td>
+        <td>43732</td>
+        <td>43731</td>
+        <td>43730</td>
+        <td>43730</td>
+        <td>43729</td>
+        <td>43728</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>b value (intercept)</strong></td>
+        <td></td>
+        <td></td>
+        <td>-0.249805</td>
+        <td>-0.249805</td>
+        <td>-0.249864</td>
+        <td>-0.249809</td>
+        <td>-0.249868</td>
+        <td>-0.249799</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Test accuracy</strong></td>
+        <td>0.9532</td>
+        <td>0.9532</td>
+        <td>0.9532</td>
+        <td>0.9535</td>
+        <td>0.9535</td>
+        <td>0.9535</td>
+        <td>0.9535</td>
+        <td>0.9535</td>
+        <td>0.8392</td>
+    </tr>
+</table>
+</div>
+
+<br/>
+<h3>
+	<a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Platform Choice
+</h3>
 
 <p dir="ltr">
 	We use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays. The GPUs used are a Tesla K40 each on every node in the cluster.
 </p>
+<br/>
 
   <h3>
 <a id="bibliography" class="anchor" href="#bibliography" aria-hidden="true"><span class="octicon octicon-link"></span></a>Bibliography</h3>
