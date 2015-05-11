@@ -13,6 +13,7 @@
 #include "CycleTimer.h"
 #include <unistd.h>
 #include <mpi.h>
+#include <fstream>
 
 state_model state;
 
@@ -23,20 +24,20 @@ static void usage_exit() {
 "   Command Line:\n"
 "\n"
 "   -a/--num-att        :  [REQUIRED] The number of attributes\n"
-"									  /features\n"
-"   -x/--num-ex       	:  [REQUIRED] The number of training \n"
-"									  examples\n"
+"                                     /features\n"
+"   -x/--num-ex         :  [REQUIRED] The number of training \n"
+"                                     examples\n"
 "   -f/--file-path      :  [REQUIRED] Path to the training file\n"
-"   -c/--cost        	:  Parameter c of the SVM (default 1)\n"
-"   -g/--gamma       	:  Parameter gamma of the radial basis\n"
-"						   function: exp(-gamma*|u-v|^2)\n"
-"						   (default: 1/num-att)"
+"   -c/--cost           :  Parameter c of the SVM (default 1)\n"
+"   -g/--gamma          :  Parameter gamma of the radial basis\n"
+"                          function: exp(-gamma*|u-v|^2)\n"
+"                          (default: 1/num-att)\n"
 "   -e/--epsilon        :  Tolerance of termination criterion\n"
-"						   (default 0.001)"
-"	-n/--max-iter		:  Maximum number of iterations\n"
-"						   (default 150,000"
-"	-m/--model 			:  [REQUIRED] Path of model to be saved\n"
-"	-s/--cache-size		:  Size of cache (num cache lines)\n"
+"                          (default 0.001)\n"
+"   -n/--max-iter       :  Maximum number of iterations\n"
+"                          (default 150,000\n"
+"   -m/--model          :  [REQUIRED] Path of model to be saved\n"
+"   -s/--cache-size     :  Size of cache (num cache lines)\n"
 "\n";
     
 	exit(-1);
@@ -136,6 +137,7 @@ static void parse_arguments(int argc, char* argv[]) {
 
 void initialize_shard_sizes(int *shard_size, int cluster_size);
 void initialize_shard_disp(int *shard_size, int *shard_disp, int cluster_size);
+void write_out_model(float* x, int* y, float* alpha, float b);
 
 int main(int argc, char *argv[]) {
 
@@ -258,16 +260,6 @@ int main(int argc, char *argv[]) {
 			f_lo[i] = recv[idx+3];
 		}
 
-		//if (rank == 0) {
-
-		//	for(int i = 0; i < cluster_size; i++) {
-
-		//		cout << I_hi[i] << "," << I_lo[i] << ":" << f_hi[i] << "," << f_lo[i] << "\n";
-
-		//	}
-
-		//}
-
 		//obtain global maximas
 		for(int i=0; i<cluster_size; i++) {
 			if(f_lo[i] > max) {
@@ -309,13 +301,6 @@ int main(int argc, char *argv[]) {
 		I_lo_global = max_idx;
 		I_hi_global = min_idx;
 		
-
-		//if(rank == 0) {
-			
-		//		cout << "Post Root computations " << I_hi_global << "," << I_lo_global << "\n" ;
-
-		//}
-		
 		//step2 of svm training iteration
 		svm.train_step2(I_hi_global, I_lo_global, alpha_hi_new, alpha_lo_new);
 
@@ -353,18 +338,26 @@ int main(int argc, char *argv[]) {
 		svm.destroy_t_cuda_handles();
 	}
 
-	//write model to file
-	//write_out_model(x, y, alpha, b);
+	//write training model
+	if(rank == 0) {
+		//refernce vectors as arrays
+		float *x_arr = &raw_x[0];
+		int *y_arr = &raw_y[0];
 
-	//cout << "Training model has been saved to the file " << state.model_file_name << "\n";
+		//write model to file
+		write_out_model(x_arr, y_arr, alpha, svm.b);
+
+		cout << "Training model has been saved to the file " << state.model_file_name << "\n";
+	}
 
 	//clear training data
-	//for(int i = 0 ; i < state.num_train_data; i++) {	
-	//	delete [] x[i];
-	//}
+	raw_x.clear();
+	raw_y.clear();
 
-	//delete [] x;
-	//delete [] y;
+	raw_x.shrink_to_fit();
+	raw_y.shrink_to_fit();
+
+	delete [] alpha;
 
 	MPI::Finalize();
 
@@ -390,3 +383,34 @@ void initialize_shard_disp(int *shard_size, int *shard_disp, int cluster_size) {
 	}
 }
 
+void write_out_model(float* x, int* y, float* alpha, float b) {
+	//open output filestream for writing the model
+	ofstream model_file;
+	model_file.open(state.model_file_name);
+
+	if(model_file.is_open()) {
+		//gamma used in kernel for training
+		model_file << state.gamma << "\n";
+		model_file << b << "\n";
+
+		for(int i=0; i<state.num_train_data; i++) {
+			if(alpha[i] != 0) {
+				model_file << alpha[i] << "," << y[i];
+
+				//index for x
+				int idx = i*(state.num_attributes);
+
+				for(int j=0; j<state.num_attributes; j++) {
+					model_file << "," << x[idx + j];
+				}
+
+				model_file << "\n";
+			}
+		}
+
+		model_file.close();
+	} else {
+		cout << "Model output file " << state.model_file_name << " could not be opened for writing.\n";
+		exit(-1);
+	}
+}

@@ -322,7 +322,7 @@ void SvmTrain::setup(std::vector<float>& raw_x, std::vector<int>& raw_y) {
     cudaError_t err = cudaGetDeviceCount(&deviceCount);
 
     printf("---------------------------------------------------------\n");
-    printf("Initializing CUDA for CudaRenderer\n");
+    printf("Initializing CUDA for DPSVM\n");
     printf("Found %d CUDA devices\n", deviceCount);
 
     for (int i=0; i<deviceCount; i++) {
@@ -409,7 +409,7 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 			rv.f_1 = x.f_1;
 
 		}
-		else {//if (x.f_1 > y.f_1) {
+		else { //if (x.f_1 > y.f_1) {
 	
 			rv.I_1 = y.I_1;
 			rv.f_1 = y.f_1;
@@ -440,7 +440,7 @@ struct my_maxmin : public thrust::binary_function<i_helper, i_helper, i_helper> 
 			rv.f_2 = x.f_2;
 
 		}
-		else { // if(x.f_2 < y.f_2) {
+		else { //if(x.f_2 < y.f_2) {
 	
 			rv.I_2 = y.I_2;
 			rv.f_2 = y.f_2;
@@ -643,16 +643,16 @@ float SvmTrain::get_train_accuracy() {
 		float i_sq = g_x_sq[i];
 
 	
-		float dual = 0;
+		float dual = 0.0f;
 
 		dual = thrust::transform_reduce(thrust::make_zip_iterator(thrust::make_tuple(g_y_c.begin(), g_alpha_c.begin(), g_x_sq_c.begin(), g_t_dp.begin())),
    	                 thrust::make_zip_iterator(thrust::make_tuple(g_y_c.end(), g_alpha_c.end(), g_x_sq_c.end(), g_t_dp.end())),
        	             test_functor<thrust::tuple<int, float, float, float> >(i_sq, state.gamma), 0.0f, thrust::plus<float>());
 		
-
+		dual -= b;
 
 		int result = 1;
-		if(dual < 0) {
+		if(dual < 0.0f) {
 			result = -1;
 		}
 
