@@ -35,24 +35,27 @@
     <!-- MAIN CONTENT -->
     <div id="main_content_wrap" class="outer">
       <section id="main_content" class="inner">
-        <h3>
+        <h1>
+			<a id="summary" class="anchor" href="#writeup" aria-hidden="true"><span class="octicon octicon-link"></span></a>WRITE-UP</h1>
+
+
+	  <h3>
 <a id="summary" class="anchor" href="#summary" aria-hidden="true"><span class="octicon octicon-link"></span></a>Summary</h3>
 
 <p dir="ltr">
-	We have implemented a distributed and parallel <strong>Support Vector Machine</strong> training algorithm for binary classification using the <strong>OpenMPI</strong> library and the <strong>CUDA</strong> parallel programming model. Our implementation achieves the <strong>same accuracy</strong> as the ubiquitously used SVM solver LibSVM on 4 popular datasets, with speedups of up to <strong>300x</strong> against the latter, and up to <strong>10x</strong> against a few of the most highly-cited, recent papers on parallel SVMs. Our test environments include the <strong>Tesla K40m</strong> GPUs present on 10 nodes of the <strong>latedays cluster</strong><em>(at CMU)</em> and the <strong>GTX 780</strong> GPUs present on the GHC-41 machine<em>(at CMU)</em>. 
+	We have implemented a distributed and parallel <strong>Support Vector Machine</strong> training algorithm for binary classification using the <strong>OpenMPI</strong> library and the <strong>CUDA</strong> parallel programming model. Our implementation achieves the <strong>same accuracy</strong> as the ubiquitously used SVM solver LibSVM on 4 popular datasets, with speedups of up to <strong>300x</strong> against the latter, and up to <strong>10x</strong> against a few of the most highly-cited, recent papers on parallel SVMs. Our test environments include the <strong>Tesla K40m</strong> GPUs present on 10 nodes of the <strong>latedays cluster</strong> and the <strong>GTX 780</strong> GPU present on the GHC-41 machine. 
 </p>
 
 <h3>
 <a id="background" class="anchor" href="#background" aria-hidden="true"><span class="octicon octicon-link"></span></a>Background</h3>
 
 <p dir="ltr">
-	The Support Vector Machine (<strong>SVM</strong>) is a widely used supervised machine learning algorithm - it is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. In 1998, John Platt originally proposed the  Sequential Minimal Optimization (<em>SMO</em>) technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
+	The Support Vector Machine (SVM) is a widely used supervised machine learning algorithm - it is essentially a discriminative classifier used for linear and nonlinear classification tasks. The training of an SVM is a Quadratic Programming (QP) optimization problem, where the primal is converted to its dual form. In 1998, John Platt originally proposed the  Sequential Minimal Optimization (SMO) technique for solving the dual QP problem, by breaking it down to a series of smallest possible QP problems.
 </p>
 <p dir="ltr">
 	The SMO technique iteratively solves for a target function, by updating the Lagrangian multipliers and the error terms over the entire training dataset. This algorithm, or variants of it, is used by several popular SVM solvers, including <strong>LibSVM</strong>. Our implementation uses a parallel version which distributes the task of training over different nodes, as proposed by Cao et. al. <sup>[1]</sup> and extends it to multiple GPU devices based on Herrero-Lopez et. al.'s <sup>[2]</sup> methodology.  The exact loss function, and other equations describing the dual QP problem are succinctly summarized in section 2 of Herrero-Lopez et. al.’s paper - we’ll attempt to give a high level overview of the algorithm here to show how we can benefit from parallelization. As mentioned before, this is an iterative algorithm. Each update step involves:
 </p>
 
-<br/>
 <ol><ol>
 	<li dir="ltr">
 		<p dir="ltr">
@@ -71,14 +74,14 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Updating the classification function of all other training points, based on the two updates made in <em> step 3</em>.
+			Updating the classification function of all other training points, based on the two updates made in <em> step III</em>.
 		</p>
 	</li>
 </ol></ol>
 <br/>
 
 <p dir="ltr">
-	Step 3 involves the computation of <strong><em>three</em></strong> inner products using the <strong><em>kernel</em></strong> trick (each involving two training data input vectors). On the other hand, step 4 involves the computation of <strong><em>(2*number_of_training_points)</em></strong> such inner products - each of the selected points versus the entire training set .  However, this also exposes two potential avenues for parallelization:
+	Step III involves the computation of <strong><em>three</em></strong> inner products using the <strong><em>kernel</em></strong> trick (each involving two training data input vectors). On the other hand, step IV involves the computation of <strong><em>(2*number_of_training_points)</em></strong> such inner products - each of the selected points versus the entire training set .  However, this also exposes two potential avenues for parallelization:
 </p>
 
 <br/>
@@ -113,13 +116,13 @@
 			Parallelizing kernel calculations using GPUs: For the kernel used to evaluate inner products, we use the <strong><em>Gaussian/Radial Basis Function (RBF) kernel</em></strong> - a very popular kernel function in SVM classification as it maps to an infinite dimensional space. The RBF kernel calculates the dot product of two input vectors x and y as follows:
 		</p>
 		<p dir="ltr" class="centeredImage">
-			<img src="images/kernel.png"/>
+			<img src="images/kernel.png"/ height='30' width='400'>
 		</p>
 		<p dir="ltr">
-			As the equation above shows, this can be decomposed to depend on the sum of the norms of the individual vectors minus twice the ordinary vector product of the two. In step 4, as mentioned above, we need to do this for two selected points, each versus the entire training set. Now, we can’t pre-compute and store the dot product of each training vector with each other vector - this would require O(N<sup>2</sup>) storage, which won’t be available on GPUs for even moderately large datasets. We can, however, pre compute and store the norm of each vector - this requires only O(N) storage. 
+			As the equation above shows, this can be decomposed to depend on the sum of the norms of the individual vectors minus twice the ordinary vector product of the two. In step 4, as mentioned in the Background section, we need to do this for two selected points, each versus the entire training set. Now, we can’t pre-compute and store the dot product of each training vector with each other vector - this would require O(N<sup>2</sup>) storage, which won’t be available on GPUs for even moderately large datasets. We can, however, pre compute and store the norm of each vector - this requires only O(N) storage. 
 		</p>
 		<p dir = "ltr">
-			If we do this, we only need to calculate the ||x||.||y|| terms in each update phase - this corresponds to two matrix-vector products. Here, the matrix corresponds the training set and the vector corresponds each of the two selected training points. We use <strong><em>cuBLAS</em></strong> to efficiently parallelize these two matrix-vector dot products. The resulting number-of-training-examples sized vector of updates must now be used to update the classification function of all the training points. However, order does not matter now - what we essentially have are a few vectors that need to be combined into one vector. Each component can be computed in parallel. For this, we use a <strong>thrust::for_each()</strong> loop with a custom functor to compute the update.
+			If we do this, we only need to calculate the ||x||.||y|| terms in each update phase - this corresponds to two matrix-vector products. Here, the matrix corresponds the training set and the vector corresponds each of the two selected training points. We use <strong><em>cuBLAS</em></strong> to efficiently parallelize these two matrix-vector dot products. The resulting number-of-training-examples sized vector of updates must be used to update the classification function of all the training points. However, order does not matter now - what we essentially have are a few vectors that need to be combined into one vector. Each component can be computed in parallel. For this, we use a <strong>thrust::for_each()</strong> loop with a custom functor to compute the update.
 		</p>
 	</li>
 	<li dir="ltr">
@@ -134,9 +137,8 @@
 		</p>
 	</li>
 </ol></ol>
-<br/>
 
-<a id="speedup" class="anchor" href="#speedup" aria-hidden="true"><span class="octicon octicon-link"></span></a><h3>Speed-Up Tricks</h3>
+<a id="speedup" class="anchor" href="#speedup" aria-hidden="true"><span class="octicon octicon-link"></span></a><h5>Speed-Up Tricks</h5>
 
 <p dir="ltr">
 	Our implementation also uses a couple of neat tricks to really improve performance:
@@ -149,12 +151,12 @@
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			Post adding the cache, further profiling showed separating the data into sets and actually selecting the candidate points (steps I and II, as mentioned in the background) was often the bottleneck. Our initial implementation for this used a <strong><em>thrust::for_each()</em></strong> loop to make the sets (using a tricky, lock-less functor), and Thrust’s special maximum and minimum reduction functions to locate the points within the sets. However, this required one pass over each set, which was done serially. Instead, we replaced this with an approach where we built only a <strong><em>single aggregated set of tuples</strong></em> - the first element of the tuple represents a point in the set 1 and the second, a point in set 2. We then wrote a custom reduction functor to find the maximum of the first tuple entry and the minimum of the second in one pass itself. This  showed a significant speedup as well, shaving a third off the times in our runs.
+			Post adding the cache, further profiling showed separating the data into sets and actually selecting the candidate points (steps I and II, as mentioned in the background) was often the bottleneck. Our initial implementation for this used a <strong><em>thrust::for_each()</em></strong> loop to make the sets (using a tricky, lock-less functor), and Thrust’s special maximum and minimum reduction functions to locate the points within the sets. However, this required a separate pass over each set. Instead, we replaced this with an approach where we built only a <strong><em>single aggregated set of tuples</strong></em> - the first element of the tuple represents a point in the set 1 and the second, a point in set 2. We then wrote a custom reduction functor to find the maximum of the first tuple entry and the minimum of the second in one pass itself. This  showed a significant speedup as well, shaving a third off the times in our runs.
 		</p>
 	</li>
 	<li dir="ltr">
 		<p dir="ltr">
-			We use individual CUDA streams to calculate each of the 2 matrix-vector products required (if both cache lookups miss) in each iteration - this allows CUDA to mix the two <strong>SGEMV cuBLAS</strong> operations since they are mutually exclusive.
+			We use individual CUDA streams to calculate each of the 2 matrix-vector products required (if both cache lookups miss) in each iteration - this allows CUDA to mix the two SGEMV cuBLAS operations since they are mutually exclusive.
 		</p>
 	</li>
 	<li dir="ltr">
@@ -163,17 +165,15 @@
 		</p>
 	</li>
 </ol></ol>
-<br/>
 
-<h3>
+<h5>
 	<a id="classification" class="anchor" href="#classification" aria-hidden="true"><span class="octicon octicon-link"></span></a>
 	Classification
-</h3>
+</h5>
 <p dir="ltr">
 	One of our stretch goals for this project was to parallelize classification as well. This turned out to be a necessity, since our standard sequential approach took prohibitively long times for the larger datasets. While we haven’t spent much time optimizing this, we seem to match the parallel classification timings put forward by Herrero-Lopez et. al. in their paper. Classification essentially follows the following process:
 </p>
 
-<br/>
 <ul><ul>
 	<li dir="ltr">
 		<p dir="ltr">
@@ -191,7 +191,7 @@
 		</p>
 	</li>
 </ul></ul>
-<br/>
+
 
 <p dir="ltr">
 	Our approach involves using a cuBLAS SGEMV operation, followed by a thrust transform_reduce operation using a custom functor to achieve this. For getting training accuracy (i.e. classifying the training data immediately post training), we also use Thrust to sparsify the training matrix by removing those points that aren’t support vectors in parallel.
@@ -204,7 +204,9 @@
 </h3>
 
 <p dir="ltr">
-	This the table of results for the 3 datasets we had mentioned in the proposal (with expected speed-ups in the proposal):
+	We've reused the CycleTimer we used in our homework assignments to measure times, both for overall run-timings, and for profiling the time taken by individual program segments.
+
+	First off, this is the table of results for the 3 datasets mentioned in our proposal. All speedups mentioned are versus LibSVM runs on an Intel Core i7-920 2.67 GHz CPU. These LibSVM timings are reported by Herrero-Lopez et. al. and are the quickest ones amongst the various papers we referred to.
 </p>
 
 <div dir="ltr">
@@ -239,7 +241,7 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>REFERENCE:</strong> Speedup achieved using a single Tesla C1060 and an Intel Core i7-920 2.67 GHz CPU
+						<strong>REFERENCE:</strong> Speedup achieved using a single Tesla C1060.
 						<sup>[2]</sup>
 					</p>
 				</td>
@@ -262,17 +264,17 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>REFERENCE:</strong> Speedup achieved using chunking algorithm on three Tesla C1060s and one Intel Xeon E5426 2.8GHz	quad-core CPU. <sup>[3]</sup>
+						<strong>REFERENCE:</strong> Speedup achieved using a less-accurate, quicker chunking algorithm on three Tesla C1060s. <sup>[3]</sup>
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						19.38x (3 GPUs on single node)
+						13.53x
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						129.64x
+						82.9x
 					</p>
 				</td>
 				<td class="info_column">
@@ -286,12 +288,12 @@
 			<tr>
 				<td class="setup_column">
 					<p dir="ltr">
-						<strong>RESULT:</strong> Our Implementation on LATEDAYS: 1 Tesla K40 on every node, CPU-based LibSVM times taken from [3] 
+						<strong>RESULT:</strong> Our Implementation: Single GPU calculations on GTX 780, multi-GPU calculations on latedays: 1 Tesla K40 on every node. CPU-based LibSVM times taken from [3] 
 					</p>
 				</td>
 				<td class="info_column">
 					<p dir="ltr">
-						<strong>14.229x</strong> (1 GPU)
+						<strong>14.23x</strong> (1 GPU)
 					</p>
 				</td>
 				<td class="info_column">
@@ -313,14 +315,12 @@
 	</table>
 </div>
 
-<br/>
-
 <p dir="ltr">
-	The graphs below summarize the runtime and the speed-up statistics of DPSVM with respect to Herrero-Lopez et. al.'s implementation, for the <strong>MNIST</strong>(LeCun et al., 1998) and the <strong>Web dataset</strong> (Platt, 1999). Herrero-Lopez et. al. profile their implementation using an <strong>NVIDIA Tesla C1060 GPU</strong>, which is comparable to our tests using an <strong>NVIDIA GTX 780</strong> for a single node case. But, as pointed in the summary we use the <strong>NVIDIA Tesla K40m</strong> GPUs for the multiple node case.
+	The graphs below summarize the runtime and the speed-up statistics of DPSVM with respect to Herrero-Lopez et. al.'s implementation, for the <strong>MNIST dataset</strong> (LeCun et al., 1998) and the <strong>Web dataset</strong> (Platt, 1999). As mentioned in the table above, Herrero-Lopez et. al. profile their implementation using an <strong>NVIDIA Tesla C1060 GPU</strong>, while we use an <strong>NVIDIA GTX 780</strong> for the single node case, and the <strong>NVIDIA Tesla K40m</strong> GPUs on latedays for the multiple node case.
 </p>
 
 <p dir="ltr">
-	The <strong>Spark MLLib's SVMWithSGD()</strong> implementation was profiled on an <strong>AWS EMR</strong> cluster, using <strong>10 m3.2xlarge</strong> machines. The RDDs were persisted in memory for this Spark implementation. Note that SVMWithSGD() esentially acts like a <strong><em>linear</em></strong> kernel, which would have smaller run-times, but sacrifices accuracy of classification for datasets which can't be separated with linear hyperplanes.
+	The <strong>Spark MLLib's SVMWithSGD()</strong> implementation was profiled on an <strong>AWS EMR</strong> cluster, using <strong>10 m3.2xlarge</strong> machines. Each m3.2xlarge machine has an Intel Xeon E5-2670 v2 CPU, with 8 vCPUs and 30GB of memory. The RDDs were persisted in memory for this Spark implementation. SVMWithSGD() essentially acts like a <strong><em>linear</em></strong> kernel, which would have smaller run-times, but sacrifices accuracy of classification for datasets which can't be separated with linear hyperplanes.
 </p>
 
 <div>
@@ -341,49 +341,12 @@
 </div>
 <br/>    
 
-<h3>
+<h5>
 	<a id="challenge" class="anchor" href="#challenge" aria-hidden="true"><span class="octicon octicon-link"></span></a>
 	Challenges
-</h3>
+</h5>
 
-<p dir="ltr">
-	The aspect of the problem that is most challenging is parallelizing the kernel computations in a way that <strong><em>minimizes communication</em></strong> overheads between:
-</p>
-<ol><ol>
-	<li dir="ltr">
-		<p dir="ltr">
-			Nodes in the cluster
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			GPU and CPU
-		</p>
-	</li>
-</ol></ol>
-
-<p dir="ltr">
-	For a single GPU implementation of a parallel SVM algorithm, <sup>[2]</sup> profiles time spent on communication versus computation on various training datasets. The following trends were noted:
-</p>
-<ol><ol>
-	<li dir="ltr">
-		<p dir="ltr">
-			Datasets with a large number of features per sample and a large number of samples spent most of the GPU time on computation (the <strong><em>kernel computation</em></strong>, which is a SGEMV matrix operation).
-		</p>
-	</li>
-	<li dir="ltr">
-		<p dir="ltr">
-			Datasets with a relatively smaller number of features and samples were seen to spend up to 33% of GPU time on communication, during reductions and updates across GPU tasks.
-		</p>
-	</li>
-</ol></ol>
-<p dir="ltr">
-	Since we are are shifting this to a distributed environment, we would expect to see the communication-to-computation overhead increase. However, there exist even more <strong><em>complex datasets</em></strong> <sup>[3]</sup> that we expect to exhibit low ratios in our distributed environment as well.
-</p>
-
-<br/>
-<p dir="ltr">
-	For the first case, of increased overhead of communication with increasing number of nodes, can be observed using the <strong>Adult dataset</strong>(Asuncion &amp; Newman, 2007), which actually performs better on a single GPU, rather than distributing work across different GPUs. This has been confirmed by profiling the run-time of the runs, with breakdown of the communication and computation times. The next few graphs illustrate this trend.
+	Since we were using a distributed environment, we expected to see the communication-to-computation overhead increase with node-count for smaller datasets, and weren't wrong: this trend was observed using the <strong>Adult dataset</strong> (Asuncion &amp; Newman, 2007), which actually performs better on a single GPU, as opposed to distributing work across different GPUs. This has been confirmed by profiling the run-time of the runs, with breakdown of the communication and computation times. The next few graphs illustrate this trend.
 </p>
 
 <div>
@@ -396,18 +359,125 @@
 	<img src="images/adult_3.png" width="400px;" height="300px;"/>
 	<img src="images/adult_4.png" width="400px;" height="300px;"/>
 </div>
-<br/>
 
-<h3>
+<p>As a side note, we'd also like to talk about the disparity in the hardware used in the reported statistics. This stems from several issues - one, to the best of our knowledge, there isn't any pre-existing distributed AND parallel implementation to benchmark against. Secondly, while GPU-optimized implementations are available online - they are not packaged well. We are still trying to resolve the dependencies for a couple of online implementations we recently found. Finally, a lot of the published results in this area are circumspect in the testing criteria they report, and the modifications they make to the datasets they test on. For example, some papers we found do not report the tolerance they used to converge - this has a direct bearing on accuracy, training time and number of support vectors identified.    <br/>
+
+In our results, we've tried to report the most reliable and highly-cited results we could could find. Additionally, for further reference, we've made a couple of last minute runs on the lowest performing GPU available on the GHC-clusters (the GPU 480X), and present those results here as well:
+ </p>
+ <div dir="ltr">
+	<table class="my_table">
+		<colgroup>
+			<col width="143"/>
+			<col width="141"/>
+			<col width="101"/>
+			<col width="*"/>
+		</colgroup>
+		<tbody>
+			<tr>
+				<td class="setup_column">
+					<strong> <p> Setup vs. Dataset </p> </strong>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>Adult</strong>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>MNIST (Even vs Odd)</strong>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>Web</strong>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						<strong>REFERENCE:</strong> Speedup achieved using a single Tesla C1060.
+						<sup>[2]</sup>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						32.67s
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						425.89s
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						156.95s
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						<strong>REFERENCE:</strong> Speedup achieved using a less-accurate, quicker chunking algorithm on three Tesla C1060s. <sup>[3]</sup>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						25.23s
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						168.42s
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						78.40s
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<td class="setup_column">
+					<p dir="ltr">
+						<strong>RESULT:</strong> Our Implementation: Single GPU calculations on GTX 480 
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>31s</strong>
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>208s</strong> 
+					</p>
+				</td>
+				<td class="info_column">
+					<p dir="ltr">
+						<strong>88s</strong>
+					</p>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+
+Even here, our results are significantly better than the single C1060 implementation, and are fairly close to the three-C1060 implementation of a simpler, less-accurate training algorithm. We feel these results serve as a good stand-in, until we are able to either procure equivalent hardware to test our implementation on, or get one of the cited implementations running on our own hardware. Additionally, we'd also like to maintain the focus on our USP, the distribution of parallelism over clusters, which can lead to significant improvement in run-times. This can clearly be seen in runs on the complex forest cover-type dataset <sup>[6]</sup>. This dataset consists of 581012 data points, each with 54 attributes, and requires around a million iterations to converge with RBF kernel parameters: <em>C</em> = 10, <em>gamma</em> = 0.125, and <em>tolerance</em> = 0.01.
+
+<div class="centeredImage">
+	<img src="images/covertype_new.png" width="400px;" height="300px;"/>
+</div>
+
+<h5>
 	<a id="runs" class="anchor" href="#runs" aria-hidden="true"><span class="octicon octicon-link"></span></a>
-	Run Statistics
-</h3>
+	Precise Run Statistics
+</h5>
 
-<p dir="ltr">
-	We would like to conclude the results by describing the Gaussian Kernel Parameters used for various datasets, with the number of iterations and support vectors obtained for various configurations.
-</p>
-
-<h5>MNIST</h5>
+<strong>MNIST</strong>
+<br/>
+Training points: 60,000 ; Testing points: 10,000 <br/>
 <strong>Parameters of Gaussian Kernel: <em>C</em></strong> = 10, <strong><em>gamma</em></strong> = 0.125, <strong><em>tolerance</em></strong> = 0.001
 <br/>
 
@@ -475,8 +545,8 @@
     </tr>
     <tr>
         <td><strong>b value (intercept)</strong></td>
-        <td></td>
-        <td></td>
+        <td>--</td>
+        <td>--</td>
         <td>-0.249805</td>
         <td>-0.249805</td>
         <td>-0.249864</td>
@@ -495,21 +565,228 @@
         <td>0.9535</td>
         <td>0.9535</td>
         <td>0.9535</td>
-        <td>0.8392</td>
+        <td>0.878</td>
     </tr>
 </table>
 </div>
 
 <br/>
-<h3>
+
+<strong>Web</strong>
+<br/>
+Training points: 49,749 ; Testing points: 10,000 <br/>
+<strong>Parameters of Gaussian Kernel: <em>C</em></strong> = 64, <strong><em>gamma</em></strong> = 7.8125, <strong><em>tolerance</em></strong> = 0.001
+<br/>
+
+<div dir="ltr">
+	<table>
+    <tr>
+        <td><strong>Number of nodes</strong></td>
+        <td><strong>LibSVM 1</strong></td>
+        <td><strong>Lopez et. al. 1 GPU</strong></td>
+        <td><strong>1</strong></td>
+        <td><strong>2</strong></td>
+        <td><strong>4</strong></td>
+        <td><strong>6</strong></td>
+        <td><strong>8</strong></td>
+        <td><strong>10</strong></td>
+        <td><strong>Spark 10</strong></td>
+    </tr>
+    <tr>
+        <td><strong>Svm training time (in sec.)</strong></td>
+        <td>2350</td>
+        <td>156.95</td>
+        <td>60</td>
+        <td>49</td>
+        <td>38</td>
+        <td>41</td>
+        <td>34</td>
+        <td>36</td>
+        <td>22</td>
+    </tr>
+    <tr>
+        <td><strong>MPI communication time (in sec.)</strong></td>
+        <td>n/a</td>
+        <td>n/a</td>
+        <td>0</td>
+        <td>6</td>
+        <td>12</td>
+        <td>20</td>
+        <td>14</td>
+        <td>14</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of iterations to converge</strong></td>
+        <td>85299</td>
+        <td>76242</td>
+        <td>77886</td>
+        <td>79953</td>
+        <td>80738</td>
+        <td>87146</td>
+        <td>78507</td>
+        <td>75968</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of support vectors</strong></td>
+        <td>35232</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>35220</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>b value (intercept)</strong></td>
+        <td>--</td>
+        <td>--</td>
+        <td>0.948853</td>
+        <td>0.948856</td>
+        <td>0.949773</td>
+        <td>0.946923</td>
+        <td>0.948893</td>
+        <td>0.948896</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Test accuracy</strong></td>
+        <td>0.99415</td>
+        <td>0.99415</td>
+        <td>0.9919</td>
+        <td>0.994449</td>
+        <td>0.994449</td>
+        <td>0.994449</td>
+        <td>0.994449</td>
+        <td>0.994449</td>
+        <td>0.9709049562</td>
+    </tr>
+</table>
+</div>
+
+<strong>Adult</strong>
+<br/>
+Training points: 32,561 ; Testing points: 16,281 <br/>
+<strong>Parameters of Gaussian Kernel: <em>C</em></strong> = 100, <strong><em>gamma</em></strong> = 0.5, <strong><em>tolerance</em></strong> = 0.001
+<br/>
+
+<div dir="ltr">
+	<table>
+    <tr>
+        <td><strong>Number of nodes</strong></td>
+        <td><strong>LibSVM 1</strong></td>
+        <td><strong>Lopez et. al. 1 GPU</strong></td>
+        <td><strong>1</strong></td>
+        <td><strong>2</strong></td>
+        <td><strong>4</strong></td>
+        <td><strong>6</strong></td>
+        <td><strong>8</strong></td>
+        <td><strong>10</strong></td>
+        <td><strong>Spark 10</strong></td>
+    </tr>
+    <tr>
+        <td><strong>Svm training time (in sec.)</strong></td>
+        <td>341.5</td>
+        <td>32.67</td>
+        <td>24</td>
+        <td>33</td>
+        <td>37</td>
+        <td>41</td>
+        <td>43</td>
+        <td>48</td>
+        <td>15</td>
+    </tr>
+    <tr>
+        <td><strong>MPI communication time (in sec.)</strong></td>
+        <td>n/a</td>
+        <td>n/a</td>
+        <td>0</td>
+        <td>7</td>
+        <td>15</td>
+        <td>16</td>
+        <td>17</td>
+        <td>17</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of iterations to converge</strong></td>
+        <td>43735</td>
+        <td>115177</td>
+        <td>115612</td>
+        <td>131555</td>
+        <td>131422</td>
+        <td>130858</td>
+        <td>132037</td>
+        <td>131207</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Number of support vectors</strong></td>
+        <td>19058</td>
+        <td>18677</td>
+        <td>18694</td>
+        <td>18718</td>
+        <td>18705</td>
+        <td>18705</td>
+        <td>18708</td>
+        <td>18689</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>b value (intercept)</strong></td>
+        <td>--</td>
+        <td>--</td>
+        <td>0.469509</td>
+        <td>0.455351</td>
+        <td>0.472694</td>
+        <td>0.478415</td>
+        <td>0.477845</td>
+        <td>0.497827</td>
+        <td>n/a</td>
+    </tr>
+    <tr>
+        <td><strong>Test accuracy</strong></td>
+        <td>0.82697</td>
+        <td>0.82697</td>
+        <td>0.82722</td>
+        <td>0.827283</td>
+        <td>0.827283</td>
+        <td>0.827283</td>
+        <td>0.827283</td>
+        <td>0.827283</td>
+        <td>0.8392</td>
+    </tr>
+</table>
+</div>
+<h5>
 	<a id="platform" class="anchor" href="#platform" aria-hidden="true"><span class="octicon octicon-link"></span></a>
 	Platform Choice
-</h3>
+</h5>
 
 <p dir="ltr">
-	We use the OpenMPI library and the CUDA parallel programming model on the latedays cluster. As mentioned above, this would allow us to create a portable implementation of our distributed SVM along with a high-performance GP-GPU pipeline targeted at latedays. The GPUs used are a Tesla K40 each on every node in the cluster.
+	After all our testing, we feel our results confirm that our distributed-GPU approach was a sound choice. Each iteration step is composed of a huge number of small calculations - amenable to GPUs. For complex datasets, communication overhead between nodes is outweighed by the lower iteration time on smaller, sharded data.
 </p>
-<br/>
+
+<h5>
+	<a id="improve" class="anchor" href="#improve" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	Room to improve
+</h5>
+
+<p dir="ltr">
+	We feel we still have quite a few avenues open for improvement: we want to make some changes that will remove CPU-GPU communication entirely and rely on OpenMPI 1.8's neat GPU-GPU buffer transfer feature. Integrating this efficiently with thrust will be pretty tricky. Additionally, we'd also like to update our algorithm to use an adaptive approach that switches between the first-order heuristic we currently use (which has a large number of quick iterations), and a second-order heuristic used in some implementations (which has a smaller number of longer iterations). Finally, we'd also like to add support for more kernels. We hope to get some of this done over the summer.
+</p>
+
+<h5>
+	<a id="bottomline" class="anchor" href="#bottomline" aria-hidden="true"><span class="octicon octicon-link"></span></a>
+	The Bottom Line
+</h5>
+
+<p dir="ltr">
+	We've come up with a parallel SVM training module which is as accurate as LibSVM, while being quicker than most other current available implementations. When shifted to a distributed environment, we feel our implementation would be hard to beat in terms of runtime for complex datasets. Additionally, we're confident the interface we provide will seem intuitive to any user who is familiar with LibSVM, or any other prominent sequential package available today.
+</p>
 
   <h3>
 <a id="bibliography" class="anchor" href="#bibliography" aria-hidden="true"><span class="octicon octicon-link"></span></a>Bibliography</h3>
@@ -529,15 +806,17 @@
 <p dir="ltr">
 	<sup>[5]</sup> B. Catanzaro, N. Sundaram, and K. Keutzer. Fast support vector machine training and classification on graphics processors. In ICML ’08: Proceedings of the 25th international conference on Machine learning, pages 104–111, New York, NY, USA, 2008. ACM.
 </p>
+<p dir="ltr">
+	<sup>[6]</sup>
+Bache, K. & Lichman, M. (2013). UCI Machine Learning Repository. Irvine, CA: University of California, School of Information and Computer Science
+</p>
 
-<br/>
-<br/>
 <h3>
 	<a id="work" class="anchor" href="#work" aria-hidden="true"><span class="octicon octicon-link"></span></a>
 	Work division
 </h3>
 <p dir="ltr">
-	Both Aditya (andrewID: <strong>kgabbita</strong>) and Siddharth (andrewID: <strong>siddhar2</strong>) have divided work equally among themselves.
+	Equal work was performed by both project members.
 </p>
 
 </body>
